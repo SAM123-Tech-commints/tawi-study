@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="128" fill="#b7e938"/>
+  <!-- owl body/head silhouette -->
+  <g transform="translate(80, 40)">
+    <!-- feathers/hair spikes top -->
+    <path d="M170 280 Q140 220 120 180 Q130 160 160 170 Q145 130 130 100 Q150 110 170 140 Q180 100 195 80 Q200 105 200 130 Q215 90 230 70 Q230 100 225 130 Q245 110 265 100 Q255 130 240 150 Q265 130 285 125 Q270 160 250 175 Q275 165 295 160 Q280 190 260 200 Q270 200 280 205 Q260 230 240 245 Q250 265 250 290 Q230 320 210 340 Q195 360 180 370 Q175 360 170 345 Q155 360 145 370 Q140 360 135 345 Q115 325 100 300 Q90 275 95 250 Q85 230 95 210 Q80 200 90 190 Q85 170 100 160 Q100 145 115 140 Q110 120 130 100" fill="white" stroke="none"/>
+    <!-- eyes - outer rings -->
+    <circle cx="170" cy="240" r="58" fill="#b7e938"/>
+    <circle cx="280" cy="235" r="55" fill="#b7e938"/>
+    <!-- eyes - white -->
+    <circle cx="170" cy="240" r="48" fill="white"/>
+    <circle cx="280" cy="235" r="45" fill="white"/>
+    <!-- pupils -->
+    <circle cx="180" cy="240" r="30" fill="#b7e938"/>
+    <circle cx="288" cy="235" r="28" fill="#b7e938"/>
+    <!-- pupil highlights -->
+    <circle cx="190" cy="230" r="10" fill="white"/>
+    <circle cx="298" cy="225" r="9" fill="white"/>
+    <!-- beak -->
+    <path d="M230 275 Q255 265 290 280 Q300 290 295 300 Q280 325 255 340 Q240 348 230 345 Q215 335 220 310 Q225 295 230 275Z" fill="#b7e938" stroke="white" stroke-width="6"/>
+  </g>
+</svg>
