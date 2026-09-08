@@ -11,14 +11,39 @@ export function normalize(text: string): string {
     .trim();
 }
 
+/* Cover pages, running heads and page furniture carry no meaning — "Page 1
+ * DSA Reviewer", "1/1", a lone "2025". Strip them before anything else so the
+ * AI reviews the material, not the margins. */
+const BOILERPLATE_LINE =
+  /^(page\s+\d+(\s+of\s+\d+)?|p\.\s*\d+|\d+\s*\/\s*\d+|\d{4}([–-]\d{4})?|figure\s+\d+(\.\d+)*|fig\.\s*\d+|table\s+\d+(\.\d+)*|slide\s+\d+(\s+of\s+\d+)?)\s*([.·•\-–—:].*)?$/i;
+
+export function stripBoilerplate(text: string): string {
+  const lines = normalize(text).split("\n");
+  const kept = lines.filter((line) => {
+    const t = line.trim().replace(/^[#\-•*▪‣\d+.)\s]+/, "").trim();
+    if (!t) return false;
+    if (BOILERPLATE_LINE.test(t)) return false;
+    // A lone fragment under 3 words with no verb is furniture, not content.
+    if (t.split(/\s+/).length < 3 && !/[.!?:;]$/.test(t) && t.length < 40) {
+      if (/^(lesson|chapter|unit|module|week|day|part|section|topic|page)\b/i.test(t)) return false;
+    }
+    return true;
+  });
+  return kept.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 export function splitSentences(text: string): string[] {
-  const parts = normalize(text).split(/\n+/);
+  const pre = normalize(text)
+    // Step-by-step lines glued together ("…memory. 2. Array Index — …") split apart.
+    .replace(/(\S)\s+(\d{1,3}[.)]\s+[A-Z*"'])/g, "$1\n$2")
+    .replace(/[ \t]+[•▪‣·]/g, "\n• ");
+  const parts = pre.split(/\n+/);
   const out: string[] = [];
   for (const line of parts) {
     const pieces = line
       .replace(/^#{1,6}\s+/, "")
       .split(/(?<=[.!?])\s+(?=[A-Z"'(])/)
-      .map((s) => s.trim().replace(/^[-•*_>\s]+/, ""))
+      .map((s) => s.trim().replace(/^[-•*▪‣>\s]+/, "").replace(/^\d{1,3}[.)]\s+/, ""))
       .filter((s) => s.length >= 20);
     out.push(...pieces);
   }
@@ -116,7 +141,8 @@ function isDanglingOpener(s: string): boolean {
 
 function cleanTerm(t: string): string {
   const stripped = t
-    .replace(/^[\s*#\-–—:]+|[\s*#\-–—:]+$/g, "")
+    .replace(/^[\s*#\-–—:;•▪‣]+|[\s*#\-–—:;•▪‣]+$/g, "")
+    .replace(/^\d{1,3}[.)]\s+/, "")
     .replace(/\s+/g, " ")
     .trim();
   // Drop a leading article so the term reads like a glossary entry:
@@ -133,6 +159,13 @@ function cleanTerm(t: string): string {
   return out.length ? out[0].toUpperCase() + out.slice(1) : out;
 }
 
+/* Vague single words that name a topic, not a testable concept. */
+const GENERIC_SINGLETONS = new Set(
+  "topic topics lesson chapter unit module subject subjects review reviewer overview introduction summary notes note example examples advantages disadvantages types type kinds kind parts part steps step process processes system systems data information details item items thing things way ways uses usage use benefit benefits importance role roles concept concepts term terms word words".split(
+    " "
+  )
+);
+
 /** True when a candidate term is furniture, a pronoun, or has no substance. */
 function isBadTerm(t: string): boolean {
   const key = t.toLowerCase().trim();
@@ -143,6 +176,8 @@ function isBadTerm(t: string): boolean {
   if (NUMBER_WORDS.has(key)) return true;
   // A single verb is an action, not a concept: "States", "Provides", "Include".
   if (!key.includes(" ") && COMMON_VERBS.has(key)) return true;
+  // A vague topic word alone ("Topic", "Reviewer", "Advantages") tests nothing.
+  if (!key.includes(" ") && GENERIC_SINGLETONS.has(key)) return true;
   if (PRONOUN_TERMS.has(key)) return true;
   if (STRUCTURAL_LABEL.test(key)) return true;
   // A term made only of stopwords/numbers carries no meaning.
@@ -169,13 +204,15 @@ function polishDefinition(d: string): string {
 }
 
 export function extractTerms(text: string): TermDef[] {
-  const lines = normalize(text).split("\n");
+  const lines = normalize(stripBoilerplate(text)).split("\n");
   const out: TermDef[] = [];
   const add = (term: string, definition: string) => {
     if (/^\s*#/.test(term)) return; // markdown headings are not terms
     const t = cleanTerm(term);
     const d = definition.trim().replace(/^[:\-–—]\s*/, "");
-    if (t.length < 3 || t.length > 80 || d.length < 10 || d.length > 400) return;
+    // A definition must read as a real sentence, not a fragment.
+    if (t.length < 3 || t.length > 80 || d.length < 20 || d.length > 400) return;
+    if (d.split(/\s+/).length < 4) return;
     if (isBadTerm(t)) return;
     // The capture starts mid-sentence ("group of protocols…"), so tidy the
     // front and close the sentence — this is the visible back of a flashcard.
@@ -254,16 +291,24 @@ export function extractTerms(text: string): TermDef[] {
 }
 
 export function keyTerms(text: string, n: number): { term: string; meaning: string }[] {
-  const terms = extractTerms(text);
-  const out = terms.slice(0, n).map((t) => ({ term: t.term, meaning: t.definition }));
+  const terms = extractTerms(stripBoilerplate(text));
+  // Exam-ready first: multi-word concepts with full-sentence definitions beat
+  // lone generic words.
+  const ranked = [...terms].sort((a, b) => {
+    const aw = a.term.includes(" ") ? 0 : 1;
+    const bw = b.term.includes(" ") ? 0 : 1;
+    if (aw !== bw) return aw - bw;
+    return b.definition.length - a.definition.length;
+  });
+  const out = ranked.slice(0, n).map((t) => ({ term: t.term, meaning: t.definition }));
   if (out.length >= n) return out;
   const freq = wordFreq(text);
   const seen = new Set(out.map((k) => k.term.toLowerCase()));
   const sents = splitSentences(text);
-  const ranked = [...freq.entries()]
+  const byFreq = [...freq.entries()]
     .filter(([w, f]) => w.length >= 5 && f >= 2)
     .sort((a, b) => b[1] - a[1]);
-  for (const [word] of ranked) {
+  for (const [word] of byFreq) {
     if (seen.has(word)) continue;
     const term = word[0].toUpperCase() + word.slice(1);
     if (isBadTerm(term)) continue;

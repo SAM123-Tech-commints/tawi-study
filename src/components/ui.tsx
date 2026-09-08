@@ -673,22 +673,62 @@ export function RichEditor({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState<Record<string, boolean>>({});
+  const lastExternal = useRef<string>(value);
+  const seeded = useRef(false);
+
+  // Seed the DOM once per document; afterwards the editor owns its content
+  // until a genuinely different document is opened.
+  const setRef = useCallback(
+    (el: HTMLDivElement | null) => {
+      (ref as { current: HTMLDivElement | null }).current = el;
+      if (el && !seeded.current) {
+        el.innerHTML = value;
+        seeded.current = true;
+        lastExternal.current = value;
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+
+  // Uncontrolled editor: only overwrite the DOM when a different document is
+  // opened — never while typing, so the caret never jumps.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (value !== lastExternal.current && document.activeElement !== el) {
+      el.innerHTML = value;
+    }
+    lastExternal.current = value;
+  }, [value]);
 
   const syncActive = useCallback(() => {
-    const a: Record<string, boolean> = {};
-    a.bold = document.queryCommandState("bold");
-    a.italic = document.queryCommandState("italic");
-    a.underline = document.queryCommandState("underline");
-    a.strikeThrough = document.queryCommandState("strikeThrough");
-    a.insertUnorderedList = document.queryCommandState("insertUnorderedList");
-    a.insertOrderedList = document.queryCommandState("insertOrderedList");
-    setActive(a);
+    try {
+      const a: Record<string, boolean> = {};
+      a.bold = document.queryCommandState("bold");
+      a.italic = document.queryCommandState("italic");
+      a.underline = document.queryCommandState("underline");
+      a.strikeThrough = document.queryCommandState("strikeThrough");
+      a.insertUnorderedList = document.queryCommandState("insertUnorderedList");
+      a.insertOrderedList = document.queryCommandState("insertOrderedList");
+      a.justifyLeft = document.queryCommandState("justifyLeft");
+      a.justifyCenter = document.queryCommandState("justifyCenter");
+      a.justifyRight = document.queryCommandState("justifyRight");
+      a.justifyFull = document.queryCommandState("justifyFull");
+      setActive(a);
+    } catch {
+      /* ignore */
+    }
   }, []);
 
   const exec = useCallback(
     (cmd: string, val?: string) => {
-      document.execCommand(cmd, false, val);
       ref.current?.focus();
+      try {
+        document.execCommand(cmd, false, val);
+      } catch {
+        /* ignore */
+      }
       syncActive();
       onChange(ref.current?.innerHTML ?? "");
     },
@@ -785,6 +825,21 @@ export function RichEditor({
 
         <ToolbarSep />
 
+        <ToolbarBtn active={active.justifyLeft} onClick={() => exec("justifyLeft")} title="Align left">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="15" y2="12"/><line x1="3" y1="18" x2="17" y2="18"/></svg>
+        </ToolbarBtn>
+        <ToolbarBtn active={active.justifyCenter} onClick={() => exec("justifyCenter")} title="Align center">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="5" y1="18" x2="19" y2="18"/></svg>
+        </ToolbarBtn>
+        <ToolbarBtn active={active.justifyRight} onClick={() => exec("justifyRight")} title="Align right">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="9" y1="12" x2="21" y2="12"/><line x1="7" y1="18" x2="21" y2="18"/></svg>
+        </ToolbarBtn>
+        <ToolbarBtn active={active.justifyFull} onClick={() => exec("justifyFull")} title="Justify">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </ToolbarBtn>
+
+        <ToolbarSep />
+
         <ToolbarBtn onClick={insertLink} title="Insert link">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
         </ToolbarBtn>
@@ -811,7 +866,7 @@ export function RichEditor({
 
       {/* Editor area */}
       <div
-        ref={ref}
+        ref={setRef}
         contentEditable
         suppressContentEditableWarning
         onInput={handleInput}
@@ -819,9 +874,8 @@ export function RichEditor({
         onKeyUp={syncActive}
         onKeyDown={handleKeyDown}
         data-placeholder={placeholder ?? "Start writing..."}
-        className="min-h-[300px] bg-white px-5 py-4 text-[15px] leading-relaxed text-ink/85 outline-none empty:before:text-ink/30 dark:bg-surface-dark dark:text-cream/85 dark:before:text-cream/30 [&:empty]:before:content-[attr(data-placeholder)] [&_h1]:text-xl [&_h1]:font-bold [&_h1]:text-ink [&_h1]:dark:text-cream [&_h2]:text-lg [&_h2]:font-bold [&_h2]:text-ink [&_h2]:dark:text-cream [&_h3]:text-[15px] [&_h3]:font-bold [&_h3]:text-ink [&_h3]:dark:text-cream [&_li]:ml-4 [&_li]:list-disc [&_li]:pl-1 [&_ol]:ml-4 [&_ol]:list-decimal [&_p]:mb-2 [&_ul]:ml-4 [&_ul]:list-disc"
+        className="min-h-[300px] bg-white px-5 py-4 text-left text-[15px] leading-relaxed text-ink/85 outline-none empty:before:text-ink/30 dark:bg-surface-dark dark:text-cream/85 dark:before:text-cream/30 [&:empty]:before:content-[attr(data-placeholder)] [&_h1]:text-xl [&_h1]:font-bold [&_h1]:text-ink [&_h1]:dark:text-cream [&_h2]:text-lg [&_h2]:font-bold [&_h2]:text-ink [&_h2]:dark:text-cream [&_h3]:text-[15px] [&_h3]:font-bold [&_h3]:text-ink [&_h3]:dark:text-cream [&_li]:ml-4 [&_li]:list-disc [&_li]:pl-1 [&_ol]:ml-4 [&_ol]:list-decimal [&_p]:mb-2 [&_ul]:ml-4 [&_ul]:list-disc"
         style={{ minHeight }}
-        dangerouslySetInnerHTML={{ __html: value }}
       />
     </div>
   );

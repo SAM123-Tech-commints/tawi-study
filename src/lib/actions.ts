@@ -36,7 +36,7 @@ import {
 } from "@/lib/auth";
 import { initialSrs, schedule } from "@/lib/srs";
 import { SAMPLE_BIO } from "@/lib/sample";
-import { extractTerms, normalize } from "@/lib/text";
+import { extractTerms, normalize, stripBoilerplate } from "@/lib/text";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -376,8 +376,8 @@ async function buildKitContent(content: string, cardCount: number, questionCount
     terms = 0;
   }
   const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
-  const cardsN = terms > 0 ? clamp(terms, 6, 30) : clamp(cardCount, 6, 30);
-  const questionsN = terms > 0 ? clamp(terms, 6, 20) : clamp(questionCount, 6, 20);
+  const cardsN = terms > 0 ? clamp(terms, 6, 40) : clamp(cardCount, 6, 40);
+  const questionsN = terms > 0 ? clamp(terms, 6, 30) : clamp(questionCount, 6, 30);
   const cardsDrafts = await generateCards(content, Math.max(6, cardsN));
   const questionsDrafts = await generateQuestions(content, {
     count: Math.max(6, questionsN),
@@ -400,7 +400,7 @@ export async function createKitAction(opts: {
     const user = await getUser();
     if (!user) return { ok: false, error: authError() };
     if (user.isGuest) return { ok: false, error: GUEST_MESSAGE };
-    const content = normalize(opts.content);
+    const content = stripBoilerplate(normalize(opts.content));
     if (content.length < 120) {
       return { ok: false, error: "Your material is too short to build a study kit. Add a bit more content." };
     }
@@ -742,8 +742,7 @@ export async function copyKitAction(kitId: string): Promise<{ ok: boolean; error
   });
 }
 
-export async function deleteKitAction(kitId: string): Promise<{ ok: boolean }> {
-  return guard(async () => {
+export async function deleteKitAction(kitId: string): Promise<{ ok: boolean }> {  return guard(async () => {
     const user = await getUser();
     if (!user) return { ok: false };
     if (user.isGuest) return { ok: false, error: GUEST_MESSAGE };
@@ -751,6 +750,25 @@ export async function deleteKitAction(kitId: string): Promise<{ ok: boolean }> {
     revalidatePath("/dashboard");
     revalidatePath("/kits");
     return { ok: true };
+  });
+}
+
+export async function togglePinKitAction(kitId: string): Promise<{ ok: boolean; pinned?: boolean; error?: string }> {
+  return guard(async () => {
+    const user = await getUser();
+    if (!user) return { ok: false, error: authError() };
+    if (user.isGuest) return { ok: false, error: GUEST_MESSAGE };
+    const [kit] = await db
+      .select()
+      .from(kits)
+      .where(and(eq(kits.id, kitId), eq(kits.userId, user.id)))
+      .limit(1);
+    if (!kit) return { ok: false, error: "Study kit not found." };
+    const pinned = !(kit as { pinned?: boolean }).pinned;
+    await db.update(kits).set({ pinned }).where(eq(kits.id, kit.id));
+    revalidatePath("/dashboard");
+    revalidatePath("/kits");
+    return { ok: true, pinned };
   });
 }
 
@@ -997,7 +1015,7 @@ export async function getDashboardData() {
   const [classRows, kitRows, assignmentRows, cardRows, qRows, aqRows, progressRows, attemptRows] =
     await Promise.all([
       db.select().from(classes).where(eq(classes.userId, user.id)).orderBy(desc(classes.createdAt)),
-      db.select().from(kits).where(eq(kits.userId, user.id)).orderBy(desc(kits.updatedAt)),
+      db.select().from(kits).where(eq(kits.userId, user.id)).orderBy(desc(kits.pinned), desc(kits.updatedAt)),
       db.select().from(assignments).where(eq(assignments.userId, user.id)).orderBy(desc(assignments.createdAt)),
       db.select().from(cards).where(inArray(cards.kitId, db.select({ id: kits.id }).from(kits).where(eq(kits.userId, user.id)))),
       db
@@ -1074,7 +1092,7 @@ return guardRead(async () => {
   if (!user) return null;
   const [classRows, kitRows] = await Promise.all([
     db.select().from(classes).where(eq(classes.userId, user.id)).orderBy(asc(classes.name)),
-    db.select().from(kits).where(eq(kits.userId, user.id)).orderBy(desc(kits.updatedAt)),
+    db.select().from(kits).where(eq(kits.userId, user.id)).orderBy(desc(kits.pinned), desc(kits.updatedAt)),
   ]);
   const kitIds = kitRows.map((k) => k.id);
   const [cardRows, qRows] = kitIds.length

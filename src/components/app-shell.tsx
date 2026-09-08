@@ -29,6 +29,7 @@ export interface ShellUser {
   role: string | null;
   isGuest: boolean;
   isAdmin: boolean;
+  avatar?: string | null;
 }
 
 function Logo({ href = "/dashboard" }: { href?: string }) {
@@ -120,7 +121,15 @@ export function AppShell({ user, children }: { user: ShellUser; children: React.
                 className="rounded-full transition hover:ring-2 hover:ring-brand-400/60"
                 aria-label="Account menu"
               >
-                <Avatar name={user.name} size={34} />
+                {user.avatar ? (
+                  <img
+                    src={user.avatar}
+                    alt={user.name}
+                    className="h-[34px] w-[34px] rounded-full object-cover"
+                  />
+                ) : (
+                  <Avatar name={user.name} size={34} />
+                )}
               </button>
               {menuOpen && (
                 <div className="absolute right-0 top-12 w-64 rounded-2xl border border-ink/10 bg-surface p-2 shadow-xl animate-pop dark:border-cream/10 dark:bg-surface-dark">

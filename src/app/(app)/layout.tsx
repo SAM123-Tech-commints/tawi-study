@@ -13,6 +13,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         role: user.role,
         isGuest: user.isGuest,
         isAdmin: isAdminUser(user),
+        avatar: (user as { avatar?: string | null }).avatar ?? null,
       }}
     >
       <div className="page-enter">{children}</div>

@@ -59,6 +59,7 @@ export const kits = pgTable("kits", {
   summary: jsonb("summary").$type<SummaryData>(),
   notes: jsonb("notes").$type<NotesData>(),
   aiEnabled: boolean("ai_enabled").notNull().default(false),
+  pinned: boolean("pinned").notNull().default(false),
   shareToken: text("share_token").notNull().unique(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

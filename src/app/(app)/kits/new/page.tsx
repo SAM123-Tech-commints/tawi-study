@@ -61,6 +61,8 @@ export default function NewKitPage() {
   const [questionCount, setQuestionCount] = useState(12);
   const [dragOver, setDragOver] = useState(false);
   const [isGuest, setIsGuest] = useState(false);
+  const [editing, setEditing] = useState<number | null>(null);
+  const [editDraft, setEditDraft] = useState("");
   const [ocrFile, setOcrFile] = useState<File | null>(null);
   const [ocrBusy, setOcrBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -201,8 +203,8 @@ export default function NewKitPage() {
       toast("No clear term→definition pairs detected yet — add more material.", "error");
       return;
     }
-    setCardCount(Math.min(30, Math.max(6, detectedTerms)));
-    setQuestionCount(Math.min(20, Math.max(6, detectedTerms)));
+    setCardCount(Math.min(40, Math.max(6, detectedTerms)));
+    setQuestionCount(Math.min(30, Math.max(6, detectedTerms)));
     toast(`Counts set from ${detectedTerms} detected terms ✨`);
   };
 
@@ -445,21 +447,68 @@ export default function NewKitPage() {
           </div>
           <div className="space-y-2.5">
             {sources.map((s, i) => (
-              <div key={i} className="flex items-center gap-3 rounded-2xl bg-ink/4 p-3.5 dark:bg-cream/5">
-                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-surface text-ink shadow-sm dark:bg-surface-dark dark:text-cream">
-                  <FileText size={16} />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-bold text-ink dark:text-cream">{s.name}</p>
-                  <p className="text-xs text-ink/50 dark:text-cream/50">{s.text.slice(0, 140)}…</p>
+              <div key={i} className="rounded-2xl bg-ink/4 p-3.5 dark:bg-cream/5">
+                <div className="flex items-center gap-3">
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-surface text-ink shadow-sm dark:bg-surface-dark dark:text-cream">
+                    <FileText size={16} />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-bold text-ink dark:text-cream">{s.name}</p>
+                    <p className="text-xs text-ink/50 dark:text-cream/50">{s.text.slice(0, 140)}…</p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setEditing(i);
+                      setEditDraft(s.text);
+                    }}
+                    className="rounded-full px-2.5 py-1.5 text-xs font-bold text-ink/60 transition hover:bg-ink/8 hover:text-ink dark:text-cream/60 dark:hover:bg-cream/10 dark:hover:text-cream"
+                    aria-label="Review and edit text"
+                  >
+                    Review & edit
+                  </button>
+                  <button
+                    onClick={() => setSources((arr) => arr.filter((_, j) => j !== i))}
+                    className="rounded-full p-2 text-ink/40 transition hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-500/10"
+                    aria-label="Remove source"
+                  >
+                    <Trash2 size={15} />
+                  </button>
                 </div>
-                <button
-                  onClick={() => setSources((arr) => arr.filter((_, j) => j !== i))}
-                  className="rounded-full p-2 text-ink/40 transition hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-500/10"
-                  aria-label="Remove source"
-                >
-                  <Trash2 size={15} />
-                </button>
+                {editing === i && (
+                  <div className="mt-3">
+                    <Textarea
+                      rows={8}
+                      value={editDraft}
+                      onChange={(e) => setEditDraft(e.target.value)}
+                      className="font-mono text-[13px] leading-relaxed"
+                    />
+                    <div className="mt-2 flex items-center justify-between">
+                      <p className="text-[11px] text-ink/45 dark:text-cream/45">
+                        {editDraft.length.toLocaleString()} characters · clean cover pages or fix formatting before generating.
+                      </p>
+                      <div className="flex gap-2">
+                        <Button variant="ghost" size="sm" onClick={() => setEditing(null)}>
+                          Cancel
+                        </Button>
+                        <Button
+                          size="sm"
+                          disabled={editDraft.trim().length < 120}
+                          onClick={() => {
+                            if (editDraft.trim().length < 120) {
+                              toast("Keep at least a few sentences of material.", "error");
+                              return;
+                            }
+                            setSources((arr) => arr.map((x, j) => (j === i ? { ...x, text: editDraft.trim() } : x)));
+                            setEditing(null);
+                            toast("Material updated ✨");
+                          }}
+                        >
+                          <Check size={14} /> Save text
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -489,7 +538,7 @@ export default function NewKitPage() {
               <input
                 type="range"
                 min={6}
-                max={30}
+                max={40}
                 value={cardCount}
                 onChange={(e) => setCardCount(Number(e.target.value))}
                 className="w-full accent-[#96C51F]"
@@ -499,7 +548,7 @@ export default function NewKitPage() {
               <input
                 type="range"
                 min={6}
-                max={20}
+                max={30}
                 value={questionCount}
                 onChange={(e) => setQuestionCount(Number(e.target.value))}
                 className="w-full accent-[#96C51F]"

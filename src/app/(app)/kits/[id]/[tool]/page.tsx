@@ -699,6 +699,19 @@ function StudyGuideTool({
     toast(`Highlights refreshed — ${fresh.length} key terms ✨`);
   };
 
+  const cleanHighlights = () => {
+    const cleaned = highlights.filter((h) => {
+      const t = h.trim();
+      if (t.length < 4) return false;
+      // Drop vague single-word topic labels; keep real concepts.
+      if (!t.includes(" ") && /^(topics?|lessons?|chapters?|reviewers?|overviews?|introductions?|summar(y|ies)|notes?|examples?|advantages?|disadvantages|types?|kinds?|parts?|steps?)$/i.test(t)) return false;
+      return true;
+    });
+    const removed = highlights.length - cleaned.length;
+    setHighlights(cleaned);
+    toast(removed > 0 ? `Removed ${removed} vague term${removed === 1 ? "" : "s"} 🧹` : "Highlights already look clean ✨");
+  };
+
   const addTerm = () => {
     const t = newTerm.trim();
     if (t.length < 3) return;
@@ -821,6 +834,9 @@ function StudyGuideTool({
               <div className="flex items-center gap-2">
                 <Button variant="outline" size="sm" onClick={refreshHighlights}>
                   <RefreshCw size={13} /> Refresh highlights
+                </Button>
+                <Button variant="outline" size="sm" onClick={cleanHighlights} disabled={!highlights.length}>
+                  🧹 Clean up
                 </Button>
                 <Button
                   variant={focusOnly ? "dark" : "outline"}

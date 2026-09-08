@@ -80,6 +80,7 @@ const BOOTSTRAP_STATEMENTS = [
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar text`,
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS settings jsonb`,
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS api_key text`,
+  `ALTER TABLE kits ADD COLUMN IF NOT EXISTS pinned boolean NOT NULL DEFAULT false`,
 
   `CREATE TABLE IF NOT EXISTS classes (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -98,6 +99,7 @@ const BOOTSTRAP_STATEMENTS = [
     summary jsonb,
     notes jsonb,
     ai_enabled boolean NOT NULL DEFAULT false,
+    pinned boolean NOT NULL DEFAULT false,
     share_token text NOT NULL UNIQUE,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now()

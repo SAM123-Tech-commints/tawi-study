@@ -179,6 +179,16 @@ export default function CalendarPage() {
           <Button
             variant="outline"
             size="sm"
+            onClick={() => {
+              const d = new Date();
+              setCursor({ y: d.getFullYear(), m: d.getMonth() });
+            }}
+          >
+            Today
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => setCursor((c) => (c.m === 0 ? { y: c.y - 1, m: 11 } : { y: c.y, m: c.m - 1 }))}
           >
             <ChevronLeft size={15} />

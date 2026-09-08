@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { BookOpen, Copy, Layers, MessageCircleQuestion, Plus, Trash2 } from "lucide-react";
-import { copyKitAction, deleteKitAction, getKitsData } from "@/lib/actions";
+import { BookOpen, Copy, Layers, MessageCircleQuestion, Pin, PinOff, Plus, Trash2 } from "lucide-react";
+import { copyKitAction, deleteKitAction, getKitsData, togglePinKitAction } from "@/lib/actions";
 import { Button, cn, EmptyState, formatDate, Spinner, useToast } from "@/components/ui";
 
 type KitsData = NonNullable<Awaited<ReturnType<typeof getKitsData>>>;
@@ -31,10 +31,12 @@ function KitsInner() {
     () => (filter === "all" ? data?.kits ?? [] : (data?.kits ?? []).filter((k) => k.classId === filter)),
     [data, filter]
   );
+  const pinned = useMemo(() => shown.filter((k) => (k as { pinned?: boolean }).pinned), [shown]);
+  const unpinned = useMemo(() => shown.filter((k) => !(k as { pinned?: boolean }).pinned), [shown]);
 
   const grouped = useMemo(() => {
-    const map: Record<string, typeof shown> = {};
-    for (const k of shown) {
+    const map: Record<string, typeof unpinned> = {};
+    for (const k of unpinned) {
       const key = formatDate(k.updatedAt);
       (map[key] ??= []).push(k);
     }
@@ -62,6 +64,15 @@ function KitsInner() {
     await deleteKitAction(id);
     setBusy(null);
     toast(`“${title}” deleted`);
+    load();
+  };
+
+  const togglePin = async (id: string, isPinned: boolean) => {
+    setBusy(id);
+    const res = await togglePinKitAction(id);
+    setBusy(null);
+    if (res.ok) toast(isPinned ? "Unpinned 📌" : "Pinned to top 📌");
+    else toast(res.error ?? "Could not pin", "error");
     load();
   };
 
@@ -127,6 +138,56 @@ function KitsInner() {
         />
       ) : (
         <div className="space-y-7">
+          {pinned.length > 0 && (
+            <div>
+              <p className="mb-2.5 text-xs font-bold uppercase tracking-widest text-ink/40 dark:text-cream/40">
+                📌 Pinned
+              </p>
+              <div className="space-y-3">
+                {pinned.map((k) => (
+                  <div
+                    key={k.id}
+                    className="group flex flex-col gap-3 rounded-2xl border-2 border-brand-500/60 bg-surface p-5 transition hover:shadow-md sm:flex-row sm:items-center dark:bg-surface-dark"
+                  >
+                    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-brand-100 text-ink dark:bg-brand-500/15 dark:text-brand-300">
+                      <BookOpen size={19} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <Link href={`/kits/${k.id}`} className="truncate text-[15px] font-bold text-ink hover:underline dark:text-cream">
+                        {k.title}
+                      </Link>
+                      <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs font-medium text-ink/50 dark:text-cream/50">
+                        <span className="inline-flex items-center gap-1">
+                          <Layers size={12} /> {k.cardCount} cards
+                        </span>
+                        <span className="inline-flex items-center gap-1">
+                          <MessageCircleQuestion size={12} /> {k.questionCount} questions
+                        </span>
+                        {k.sourceName && <span className="truncate">📄 {k.sourceName}</span>}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Link
+                        href={`/kits/${k.id}`}
+                        className="rounded-full bg-brand-500 px-4 py-2 text-sm font-bold text-ink transition hover:bg-brand-400"
+                      >
+                        Open
+                      </Link>
+                      <Button variant="ghost" size="sm" onClick={() => togglePin(k.id, true)} disabled={busy === k.id} title="Unpin">
+                        <PinOff size={15} />
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => copy(k.id, k.title)} disabled={busy === k.id} title="Create a copy">
+                        <Copy size={15} />
+                      </Button>
+                      <Button variant="ghost" size="sm" className="text-red-500" onClick={() => remove(k.id, k.title)} disabled={busy === k.id} title="Delete">
+                        <Trash2 size={15} />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {grouped.map(([day, kits]) => (
             <div key={day}>
               <p className="mb-2.5 text-xs font-bold uppercase tracking-widest text-ink/40 dark:text-cream/40">{day}</p>
@@ -160,6 +221,9 @@ function KitsInner() {
                       >
                         Open
                       </Link>
+                      <Button variant="ghost" size="sm" onClick={() => togglePin(k.id, false)} disabled={busy === k.id} title="Pin to top">
+                        <Pin size={15} />
+                      </Button>
                       <Button variant="ghost" size="sm" onClick={() => copy(k.id, k.title)} disabled={busy === k.id} title="Create a copy">
                         <Copy size={15} />
                       </Button>
