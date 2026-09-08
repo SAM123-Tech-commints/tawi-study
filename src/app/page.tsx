@@ -58,6 +58,79 @@ function Nav() {
 
 /* ------------------------------ Hero ------------------------------ */
 
+function HeroVisual() {
+  // Your image 2 PNG: save it as public/hero.png and it appears here
+  // automatically. Until then (or if it fails to load) the built-in
+  // animated visual shows instead — nothing ever looks broken.
+  const [imgOk, setImgOk] = useState(true);
+  if (imgOk) {
+    return (
+      <div className="relative mx-auto max-w-lg animate-in-scale">
+        <img
+          src="/hero.png"
+          alt="Tawi Study — flashcards, Smart Study, streaks and study guides"
+          className="w-full rounded-[2rem] border border-ink/8 object-cover shadow-2xl dark:border-cream/10"
+          onError={() => setImgOk(false)}
+        />
+      </div>
+    );
+  }
+  return <HeroVisualFallback />;
+}
+
+function HeroVisualFallback() {
+  return (
+    <div className="relative mx-auto max-w-lg">
+      {/* Hero visual (CSS-only fallback — shows when public/hero.png is missing) */}
+      <div className="w-full rounded-[2rem] border border-ink/8 bg-gradient-to-br from-brand-100 via-surface to-violet-100 p-8 shadow-2xl dark:border-cream/10 dark:from-brand-500/20 dark:via-surface-dark dark:to-violet-500/20">
+        <div className="mx-auto grid h-28 w-28 animate-float place-items-center rounded-3xl bg-brand-500 text-5xl shadow-lg">
+          🎓
+        </div>
+        <p className="mt-5 text-center font-display text-xl font-bold text-ink dark:text-cream">
+          Turn notes into study tools
+        </p>
+        <p className="mx-auto mt-2 max-w-xs text-center text-sm leading-relaxed text-ink/60 dark:text-cream/60">
+          Flashcards · Smart Study · Study guides · Practice tests
+        </p>
+        <div className="mx-auto mt-5 flex max-w-xs flex-wrap justify-center gap-2">
+          {["📄 PDF", "🎞️ YouTube", "📝 Notes"].map((t) => (
+            <span key={t} className="rounded-full border border-ink/10 bg-surface px-3 py-1 text-xs font-bold text-ink/70 transition-transform hover:scale-105 active:scale-95 dark:border-cream/15 dark:bg-surface-dark dark:text-cream/70">
+              {t}
+            </span>
+          ))}
+        </div>
+      </div>
+      <div className="absolute -left-4 top-8 animate-float rounded-2xl border border-ink/10 bg-surface p-3.5 shadow-xl dark:border-cream/15 dark:bg-surface-dark sm:-left-10">
+        <p className="text-[11px] font-bold uppercase tracking-wide text-ink/50 dark:text-cream/50">Flashcard</p>
+        <p className="mt-0.5 text-sm font-bold text-ink dark:text-cream">Chlorophyll?</p>
+        <p className="mt-1 max-w-[160px] text-[11px] leading-snug text-ink/60 dark:text-cream/60">
+          The green pigment that absorbs light energy…
+        </p>
+      </div>
+      <div className="absolute -right-3 top-1/3 animate-float-slow rounded-2xl border border-ink/10 bg-surface p-3.5 shadow-xl dark:border-cream/15 dark:bg-surface-dark sm:-right-8">
+        <div className="flex items-center gap-2">
+          <span className="grid h-8 w-8 place-items-center rounded-full bg-brand-500 text-ink">
+            <Brain size={15} />
+          </span>
+          <div>
+            <p className="text-[13px] font-bold text-ink dark:text-cream">Smart Study</p>
+            <p className="text-[11px] text-ink/50 dark:text-cream/50">9/12 answered</p>
+          </div>
+        </div>
+        <div className="mt-2 h-1.5 w-40 overflow-hidden rounded-full bg-ink/10 dark:bg-cream/15">
+          <div className="h-full w-3/4 rounded-full bg-brand-500" />
+        </div>
+      </div>
+      <div className="absolute -bottom-5 left-6 animate-float rounded-2xl border border-ink/10 bg-surface px-4 py-3 shadow-xl dark:border-cream/15 dark:bg-surface-dark">
+        <p className="flex items-center gap-1.5 text-sm font-bold text-ink dark:text-cream">
+          <Flame size={15} className="text-amber-500" /> 7-day streak
+        </p>
+        <p className="text-[11px] font-medium text-ink/50 dark:text-cream/50">Spaced repetition is working ✨</p>
+      </div>
+    </div>
+  );
+}
+
 function Hero() {
   return (
     <section className="relative overflow-hidden">
@@ -98,54 +171,7 @@ function Hero() {
         </div>
 
         <div className="relative">
-          <div className="relative mx-auto max-w-lg">
-            {/* Hero visual (CSS-only so no /images/hero.png file is needed) */}
-            <div className="w-full rounded-[2rem] border border-ink/8 bg-gradient-to-br from-brand-100 via-surface to-violet-100 p-8 shadow-2xl dark:border-cream/10 dark:from-brand-500/20 dark:via-surface-dark dark:to-violet-500/20">
-              <div className="mx-auto grid h-28 w-28 place-items-center rounded-3xl bg-brand-500 text-5xl shadow-lg">
-                🎓
-              </div>
-              <p className="mt-5 text-center font-display text-xl font-bold text-ink dark:text-cream">
-                Turn notes into study tools
-              </p>
-              <p className="mx-auto mt-2 max-w-xs text-center text-sm leading-relaxed text-ink/60 dark:text-cream/60">
-                Flashcards · Smart Study · Study guides · Practice tests
-              </p>
-              <div className="mx-auto mt-5 flex max-w-xs flex-wrap justify-center gap-2">
-                {["📄 PDF", "🎞️ YouTube", "📝 Notes"].map((t) => (
-                  <span key={t} className="rounded-full border border-ink/10 bg-surface px-3 py-1 text-xs font-bold text-ink/70 dark:border-cream/15 dark:bg-surface-dark dark:text-cream/70">
-                    {t}
-                  </span>
-                ))}
-              </div>
-            </div>
-            <div className="absolute -left-4 top-8 animate-float rounded-2xl border border-ink/10 bg-surface p-3.5 shadow-xl dark:border-cream/15 dark:bg-surface-dark sm:-left-10">
-              <p className="text-[11px] font-bold uppercase tracking-wide text-ink/50 dark:text-cream/50">Flashcard</p>
-              <p className="mt-0.5 text-sm font-bold text-ink dark:text-cream">Chlorophyll?</p>
-              <p className="mt-1 max-w-[160px] text-[11px] leading-snug text-ink/60 dark:text-cream/60">
-                The green pigment that absorbs light energy…
-              </p>
-            </div>
-            <div className="absolute -right-3 top-1/3 animate-float-slow rounded-2xl border border-ink/10 bg-surface p-3.5 shadow-xl dark:border-cream/15 dark:bg-surface-dark sm:-right-8">
-              <div className="flex items-center gap-2">
-                <span className="grid h-8 w-8 place-items-center rounded-full bg-brand-500 text-ink">
-                  <Brain size={15} />
-                </span>
-                <div>
-                  <p className="text-[13px] font-bold text-ink dark:text-cream">Smart Study</p>
-                  <p className="text-[11px] text-ink/50 dark:text-cream/50">9/12 answered</p>
-                </div>
-              </div>
-              <div className="mt-2 h-1.5 w-40 overflow-hidden rounded-full bg-ink/10 dark:bg-cream/15">
-                <div className="h-full w-3/4 rounded-full bg-brand-500" />
-              </div>
-            </div>
-            <div className="absolute -bottom-5 left-6 animate-float rounded-2xl border border-ink/10 bg-surface px-4 py-3 shadow-xl dark:border-cream/15 dark:bg-surface-dark">
-              <p className="flex items-center gap-1.5 text-sm font-bold text-ink dark:text-cream">
-                <Flame size={15} className="text-amber-500" /> 7-day streak
-              </p>
-              <p className="text-[11px] font-medium text-ink/50 dark:text-cream/50">Spaced repetition is working ✨</p>
-            </div>
-          </div>
+          <HeroVisual />
         </div>
       </div>
 

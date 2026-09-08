@@ -50,7 +50,7 @@ export function Button({
   return (
     <button
       className={cn(
-        "inline-flex items-center justify-center rounded-full font-semibold transition-all duration-150 disabled:opacity-50 disabled:pointer-events-none select-none",
+        "inline-flex items-center justify-center rounded-full font-semibold transition-all duration-150 active:scale-[0.96] disabled:opacity-50 disabled:pointer-events-none select-none",
         variants[variant],
         sizes[size],
         className

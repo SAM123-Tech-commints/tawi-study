@@ -134,7 +134,7 @@ async function guard<T extends { ok: boolean; error?: string }>(
 
 /* ================================ AUTH ================================ */
 
-export async function signupAction(form: FormData): Promise<{ ok: boolean; error?: string }> {
+export async function signupAction(form: FormData): Promise<{ ok: boolean; error?: string; role?: string | null }> {
   return guard(async () => {
     const email = String(form.get("email") ?? "").trim().toLowerCase();
     const name = String(form.get("name") ?? "").trim();
@@ -150,11 +150,12 @@ export async function signupAction(form: FormData): Promise<{ ok: boolean; error
       .returning();
     await syncAdminFlag(user.id, email);
     await setSession(user.id);
-    return { ok: true };
+    // New accounts never have a role yet → client can skip the extra lookup.
+    return { ok: true, role: null };
   });
 }
 
-export async function signinAction(form: FormData): Promise<{ ok: boolean; error?: string }> {
+export async function signinAction(form: FormData): Promise<{ ok: boolean; error?: string; role?: string | null }> {
   return guard(async () => {
     const email = String(form.get("email") ?? "").trim().toLowerCase();
     const password = String(form.get("password") ?? "");
@@ -166,11 +167,12 @@ export async function signinAction(form: FormData): Promise<{ ok: boolean; error
     if (!valid) return { ok: false, error: "Incorrect password. Please try again." };
     await syncAdminFlag(user.id, email);
     await setSession(user.id);
-    return { ok: true };
+    // Return the role so the client routes instantly with zero extra queries.
+    return { ok: true, role: user.role };
   });
 }
 
-export async function guestSigninAction(): Promise<{ ok: boolean; error?: string }> {
+export async function guestSigninAction(): Promise<{ ok: boolean; error?: string; role?: string | null }> {
   return guard(async () => {
     const stamp = Date.now().toString(36);
     const [user] = await db
@@ -184,7 +186,53 @@ export async function guestSigninAction(): Promise<{ ok: boolean; error?: string
       })
       .returning();
     await setSession(user.id);
-    return { ok: true };
+    return { ok: true, role: "student" };
+  });
+}
+
+/* ------------------------- GOOGLE SIGN-IN ------------------------- */
+/*  Free forever: Google Identity Services costs nothing and needs no card.
+ *  Setup (2 min): Google Cloud Console → APIs & Services → Credentials →
+ *  Create "OAuth client ID" (Web) →Authorized JavaScript origin = your site
+ *  (e.g. https://tawi-study.vercel.app) → copy the Client ID into
+ *  NEXT_PUBLIC_GOOGLE_CLIENT_ID. Apple Sign in is NOT free (requires the
+ *  $99/yr Apple Developer Program), so email + Google cover everyone here. */
+
+export async function googleSigninAction(idToken: string): Promise<{ ok: boolean; error?: string; role?: string | null }> {
+  return guard(async () => {
+    const clientId = (process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? process.env.GOOGLE_CLIENT_ID ?? "").trim();
+    if (!clientId) {
+      return { ok: false, error: "Google sign-in is not configured yet. Add NEXT_PUBLIC_GOOGLE_CLIENT_ID to enable it." };
+    }
+    if (!idToken || idToken.length < 100) return { ok: false, error: "Invalid Google credential. Try again." };
+    let claims: { aud?: string; email?: string; email_verified?: string | boolean; name?: string; sub?: string };
+    try {
+      const res = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`, {
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!res.ok) return { ok: false, error: "Could not verify with Google. Try again." };
+      claims = await res.json();
+    } catch {
+      return { ok: false, error: "Could not reach Google. Check your connection and try again." };
+    }
+    if (claims.aud !== clientId) return { ok: false, error: "Google credential mismatch. Try again." };
+    const email = String(claims.email ?? "").trim().toLowerCase();
+    if (!EMAIL_RE.test(email)) return { ok: false, error: "Google did not return a valid email." };
+    if (claims.email_verified !== true && claims.email_verified !== "true") {
+      return { ok: false, error: "This Google account's email is not verified." };
+    }
+    const name = String(claims.name ?? "").trim().slice(0, 80) || email.split("@")[0];
+    const rows = await db.select().from(users).where(eq(users.email, email)).limit(1);
+    let user = rows[0];
+    if (!user) {
+      // Google users have no password — password sign-in correctly reports
+      // "no account with this email" for them, and vice versa.
+      const inserted = await db.insert(users).values({ email, name }).returning();
+      user = inserted[0];
+    }
+    await syncAdminFlag(user.id, email);
+    await setSession(user.id);
+    return { ok: true, role: user.role };
   });
 }
 

@@ -2,11 +2,30 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { ArrowRight } from "lucide-react";
-import { getSessionInfo, guestSigninAction, signinAction, signupAction } from "@/lib/actions";
+import { googleSigninAction, guestSigninAction, signinAction, signupAction } from "@/lib/actions";
 import { Button, Field, Input, Spinner, useToast } from "@/components/ui";
 import { OwlLogo } from "@/components/logo";
+
+declare global {
+  interface Window {
+    google?: {
+      accounts: {
+        id: {
+          initialize: (opts: { client_id: string; callback: (res: { credential?: string }) => void }) => void;
+          prompt: () => void;
+        };
+      };
+    };
+  }
+}
+
+const STAGE_MSGS = [
+  "Contacting the server…",
+  "Waking up the database (free tier sleeps)…",
+  "Almost there…",
+];
 
 function SigninInner() {
   const router = useRouter();
@@ -15,61 +34,147 @@ function SigninInner() {
   const { toast } = useToast();
   const [mode, setMode] = useState<"in" | "up">("up");
   const [loading, setLoading] = useState(false);
+  const [stage, setStage] = useState(0);
   const [error, setError] = useState("");
+  const [googleId, setGoogleId] = useState<string | null>(null);
+  const submitted = useRef(false);
 
-  const goNext = async () => {
-    // Returning users who already picked an account type skip onboarding.
+  // Expose the Google client ID (public value) so the button can render.
+  useEffect(() => {
+    fetch("/api/auth/config")
+      .then((r) => r.json())
+      .then((d) => setGoogleId(d.googleClientId || null))
+      .catch(() => setGoogleId(null));
+  }, []);
+
+  // Staged progress messages so a cold database never looks frozen.
+  useEffect(() => {
+    if (!loading) {
+      setStage(0);
+      return;
+    }
+    const t1 = setTimeout(() => setStage(1), 2500);
+    const t2 = setTimeout(() => setStage(2), 8000);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [loading]);
+
+  const goNext = (role?: string | null) => {
+    // Roles come back from the action itself — zero extra round trips.
     if (sample === "1") {
       router.push("/dashboard?sample=1");
     } else {
-      const info = await getSessionInfo();
-      router.push(info?.role ? "/dashboard" : "/onboarding");
+      router.push(role ? "/dashboard" : "/onboarding");
     }
     router.refresh();
   };
 
   const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (submitted.current) return;
+    submitted.current = true;
     setError("");
     setLoading(true);
-    const fd = new FormData(e.currentTarget);
-    const res = mode === "up" ? await signupAction(fd) : await signinAction(fd);
-    setLoading(false);
-    if (!res.ok) {
-      setError(res.error ?? "Something went wrong.");
-      return;
+    try {
+      const fd = new FormData(e.currentTarget);
+      const res = mode === "up" ? await signupAction(fd) : await signinAction(fd);
+      if (!res.ok) {
+        setError(res.error ?? "Something went wrong.");
+        return;
+      }
+      toast(mode === "up" ? "Account created — welcome! 🎉" : "Welcome back!");
+      goNext(res.role);
+    } finally {
+      setLoading(false);
+      submitted.current = false;
     }
-    toast(mode === "up" ? "Account created — welcome! 🎉" : "Welcome back!");
-    goNext();
   };
 
   const skip = async () => {
+    if (submitted.current) return;
+    submitted.current = true;
     setError("");
     setLoading(true);
-    const res = await guestSigninAction();
-    setLoading(false);
-    if (res.ok) {
-      toast("You're in as a guest. Try the sample kit!");
-      router.push("/dashboard");
-      router.refresh();
-    } else {
-      // Most common cause: no DATABASE_URL on this deployment.
-      // Send the user to /setup which explains the 3-step fix,
-      // but also surface the message inline in case they stay.
-      const msg = res.error ?? "Could not continue as guest.";
-      setError(msg);
-      toast(msg, "error");
-      if (/database|DATABASE_URL|setup/i.test(msg)) {
-        router.push("/setup");
+    try {
+      const res = await guestSigninAction();
+      if (res.ok) {
+        toast("You're in as a guest. Try the sample kit!");
+        router.push("/dashboard");
+        router.refresh();
+      } else {
+        // Most common cause: no DATABASE_URL on this deployment.
+        const msg = res.error ?? "Could not continue as guest.";
+        setError(msg);
+        toast(msg, "error");
+        if (/database|DATABASE_URL|setup/i.test(msg)) {
+          router.push("/setup");
+        }
       }
+    } finally {
+      setLoading(false);
+      submitted.current = false;
+    }
+  };
+
+  const google = async () => {
+    if (!googleId) {
+      toast("Google sign-in needs NEXT_PUBLIC_GOOGLE_CLIENT_ID — see Profile → Collaboration key docs.", "error");
+      return;
+    }
+    if (submitted.current) return;
+    // Load Google Identity Services on demand (no extra JS until clicked).
+    if (!window.google) {
+      await new Promise<void>((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = "https://accounts.google.com/gsi/client";
+        s.async = true;
+        s.onload = () => resolve();
+        s.onerror = () => reject(new Error("load"));
+        document.head.appendChild(s);
+      }).catch(() => {
+        toast("Could not load Google. Check your connection.", "error");
+      });
+    }
+    if (!window.google) return;
+    submitted.current = true;
+    setError("");
+    setLoading(true);
+    try {
+      const credential: string = await new Promise((resolve, reject) => {
+        window.google!.accounts.id.initialize({
+          client_id: googleId,
+          callback: (res) => (res.credential ? resolve(res.credential) : reject(new Error("cancelled"))),
+        });
+        window.google!.accounts.id.prompt();
+        // If the user closes the popup, unstick after 60s.
+        setTimeout(() => reject(new Error("timeout")), 60000);
+      });
+      const res = await googleSigninAction(credential);
+      if (!res.ok) {
+        setError(res.error ?? "Google sign-in failed.");
+        return;
+      }
+      toast("Signed in with Google — welcome! 🎉");
+      goNext(res.role);
+    } catch {
+      setError("Google sign-in was cancelled.");
+    } finally {
+      setLoading(false);
+      submitted.current = false;
     }
   };
 
   return (
-    <div className="flex min-h-dvh items-center justify-center bg-paper px-4 py-10 text-ink dark:bg-paper-dark dark:text-cream">
-      <div className="w-full max-w-md">
-        <div className="mb-8 text-center">
-          <Link href="/" className="inline-flex items-center gap-2">
+    <div className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-paper px-4 py-10 text-ink dark:bg-paper-dark dark:text-cream">
+      {/* Floating ambient blobs */}
+      <div className="pointer-events-none absolute -left-24 top-16 h-72 w-72 animate-float rounded-full bg-brand-200/50 blur-3xl dark:bg-brand-500/10" />
+      <div className="pointer-events-none absolute -right-24 bottom-10 h-80 w-80 animate-float-slow rounded-full bg-brand-100/70 blur-3xl dark:bg-brand-500/10" />
+
+      <div className="relative w-full max-w-md animate-in-scale">
+        <div className="mb-8 text-center animate-in">
+          <Link href="/" className="inline-flex items-center gap-2 transition-transform hover:scale-105 active:scale-95">
             <OwlLogo size={36} />
             <span className="text-xl font-bold tracking-tight">
               tawi<span className="font-medium text-ink/50 dark:text-cream/50">.study</span>
@@ -85,7 +190,10 @@ function SigninInner() {
           </p>
         </div>
 
-        <div className="rounded-3xl border border-ink/8 bg-surface p-6 shadow-sm dark:border-cream/10 dark:bg-surface-dark sm:p-7">
+        <div
+          key={mode}
+          className="animate-in rounded-3xl border border-ink/8 bg-surface p-6 shadow-sm dark:border-cream/10 dark:bg-surface-dark sm:p-7"
+        >
           <div className="mb-5 grid grid-cols-2 gap-1 rounded-full bg-ink/5 p-1 dark:bg-cream/5">
             {(["up", "in"] as const).map((m) => (
               <button
@@ -94,7 +202,7 @@ function SigninInner() {
                   setMode(m);
                   setError("");
                 }}
-                className={`rounded-full py-2 text-sm font-bold transition ${
+                className={`rounded-full py-2 text-sm font-bold transition-all duration-200 active:scale-95 ${
                   mode === m
                     ? "bg-surface text-ink shadow-sm dark:bg-cream/15 dark:text-cream"
                     : "text-ink/55 hover:text-ink dark:text-cream/55 dark:hover:text-cream"
@@ -125,13 +233,22 @@ function SigninInner() {
               />
             </Field>
             {error && (
-              <p className="rounded-xl bg-red-50 px-3.5 py-2.5 text-[13px] font-semibold text-red-600 dark:bg-red-500/10 dark:text-red-300">
+              <p className="animate-in rounded-xl bg-red-50 px-3.5 py-2.5 text-[13px] font-semibold text-red-600 dark:bg-red-500/10 dark:text-red-300">
                 {error}
               </p>
             )}
             <Button type="submit" size="lg" className="w-full" disabled={loading}>
-              {loading ? <Spinner className="border-ink/30 border-t-ink dark:border-cream/30 dark:border-t-cream" /> : mode === "up" ? "Create account" : "Sign in"}
-              {!loading && <ArrowRight size={16} />}
+              {loading ? (
+                <>
+                  <Spinner className="border-ink/30 border-t-ink dark:border-cream/30 dark:border-t-cream" />
+                  <span className="text-sm font-semibold">{STAGE_MSGS[stage]}</span>
+                </>
+              ) : (
+                <>
+                  {mode === "up" ? "Create account" : "Sign in"}
+                  <ArrowRight size={16} />
+                </>
+              )}
             </Button>
           </form>
 
@@ -139,13 +256,32 @@ function SigninInner() {
             <span className="h-px flex-1 bg-ink/10 dark:bg-cream/10" /> or <span className="h-px flex-1 bg-ink/10 dark:bg-cream/10" />
           </div>
 
-          <Button variant="outline" className="w-full" onClick={skip} disabled={loading}>
-            Skip for now — browse as guest
+          {/* Continue with Google — free, no card. Activates once
+              NEXT_PUBLIC_GOOGLE_CLIENT_ID is set; otherwise explains setup. */}
+          <Button variant="outline" className="w-full" onClick={google} disabled={loading}>
+            <svg width="17" height="17" viewBox="0 0 24 24" aria-hidden>
+              <path fill="#4285F4" d="M23.5 12.3c0-.9-.1-1.5-.3-2.3H12v4.5h6.5c-.1 1.1-.8 2.7-2.4 3.8l-.1.1 3.5 2.7.2.1c2.2-2 3.8-5 3.8-8.9z" />
+              <path fill="#34A853" d="M12 24c3.2 0 5.9-1.1 7.9-2.9l-3.8-2.9c-1 .7-2.4 1.2-4.1 1.2-3.1 0-5.8-2.1-6.8-5l-.1.1-3.6 2.8v.1C3.5 21.4 7.5 24 12 24z" />
+              <path fill="#FBBC05" d="M5.2 14.4c-.2-.7-.4-1.5-.4-2.4s.1-1.7.4-2.4l-.1-.1-3.6-2.8-.1.1C.5 8.7 0 10.3 0 12s.5 3.3 1.4 4.7l3.8-2.3z" />
+              <path fill="#EA4335" d="M12 4.7c1.8 0 3 .8 3.7 1.4l3.3-3.2C17.9 1.1 15.2 0 12 0 7.5 0 3.5 2.6 1.4 6.8l3.8 3c1-2.9 3.7-5.1 6.8-5.1z" />
+            </svg>
+            Continue with Google
           </Button>
+          {!googleId && (
+            <p className="mt-2 text-center text-[11px] text-ink/40 dark:text-cream/40">
+              Admins: add <code className="rounded bg-ink/5 px-1 dark:bg-cream/10">NEXT_PUBLIC_GOOGLE_CLIENT_ID</code> to enable this button.
+            </p>
+          )}
+
+          <div className="mt-3">
+            <Button variant="ghost" className="w-full" onClick={skip} disabled={loading}>
+              Skip for now — browse as guest
+            </Button>
+          </div>
         </div>
 
-        <div className="mt-6 flex items-center justify-center gap-3">
-          <span className="grid h-11 w-11 place-items-center rounded-full bg-brand-500 text-xl">🎓</span>
+        <div className="mt-6 flex items-center justify-center gap-3 animate-in">
+          <span className="grid h-11 w-11 animate-float place-items-center rounded-full bg-brand-500 text-xl">🎓</span>
           <p className="max-w-[260px] text-xs leading-relaxed text-ink/50 dark:text-cream/50">
             “Upload once, study forever.” No credit card required · Free for students
           </p>

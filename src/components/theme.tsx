@@ -45,11 +45,13 @@ export function ThemeToggle({ className }: { className?: string }) {
   return (
     <button
       onClick={toggle}
-      className={`inline-flex h-9 w-9 items-center justify-center rounded-full text-ink/60 transition hover:bg-ink/5 dark:text-cream/70 dark:hover:bg-cream/10 ${className ?? ""}`}
+      className={`inline-flex h-9 w-9 items-center justify-center rounded-full text-ink/60 transition-all duration-300 hover:bg-ink/5 hover:rotate-12 active:scale-90 active:-rotate-12 dark:text-cream/70 dark:hover:bg-cream/10 ${className ?? ""}`}
       aria-label="Toggle dark mode"
       title={dark ? "Switch to light mode" : "Switch to dark mode"}
     >
-      {dark ? <Sun size={17} /> : <Moon size={17} />}
+      <span key={dark ? "sun" : "moon"} className="animate-in-scale inline-flex">
+        {dark ? <Sun size={17} /> : <Moon size={17} />}
+      </span>
     </button>
   );
 }
