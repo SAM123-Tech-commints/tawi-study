@@ -169,7 +169,7 @@ function Hero() {
         <div className="animate-in-left">
           <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-ink/10 bg-surface px-3.5 py-1.5 text-[13px] font-semibold text-ink/80 shadow-sm dark:border-cream/10 dark:bg-surface-dark dark:text-cream/80">
             <Trophy size={14} className="text-brand-600 dark:text-brand-400" />
-            #3 best AI tool of 2025 · Trusted by millions of students
+            #3 best AI tool of 2026 · Trusted by millions of students
           </div>
           <h1 className="font-display text-[2.6rem] font-bold leading-[1.05] tracking-tight text-ink sm:text-6xl dark:text-cream">
             The fastest way to{" "}
@@ -777,7 +777,7 @@ function Pricing() {
           <span className="absolute right-5 top-5 rounded-full bg-brand-500 px-3 py-1 text-xs font-bold text-ink">Most popular</span>
           <p className="text-sm font-bold uppercase tracking-widest text-cream/50">Educators</p>
           <p className="font-display mt-3 text-4xl font-bold">
-            $9.99 <span className="text-lg font-semibold text-cream/50">/ month</span>
+            ₱549 <span className="text-lg font-semibold text-cream/50">/ month</span>
           </p>
           <ul className="mt-6 space-y-3">
             {["Everything in Free", "Build unlimited assignments", "Student results dashboard", "Class folders & organization", "Share worksheets with one link", "Priority AI generation"].map((t) => (
@@ -849,7 +849,7 @@ function Footer() {
           <Link href="/signin" className="hover:text-ink dark:hover:text-cream">Sign in</Link>
         </div>
         <p className="text-[13px] text-ink/45 dark:text-cream/45">
-          © {new Date().getFullYear()} Tawi Study · The smarter way to study
+          © 2026 Tawi Study by Sam Pas · All rights reserved
         </p>
       </div>
     </footer>
