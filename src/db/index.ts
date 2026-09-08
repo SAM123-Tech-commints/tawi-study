@@ -79,6 +79,7 @@ const BOOTSTRAP_STATEMENTS = [
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin boolean NOT NULL DEFAULT false`,
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar text`,
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS settings jsonb`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS api_key text`,
 
   `CREATE TABLE IF NOT EXISTS classes (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

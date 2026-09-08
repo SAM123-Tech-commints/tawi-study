@@ -30,6 +30,32 @@ const COLORS = ["#B7E938", "#7C5CFC", "#F5B31B", "#46A758", "#38BDF8", "#E5484D"
 const toISO = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
+function DeleteEventButton({ id, onDeleted }: { id: string; onDeleted: () => void }) {
+  const { toast } = useToast();
+  const [busy, setBusy] = useState(false);
+  return (
+    <button
+      onClick={async () => {
+        if (!confirm("Delete this event?")) return;
+        setBusy(true);
+        const res = await deleteEventAction(id);
+        setBusy(false);
+        if (!res.ok) {
+          toast(res.error ?? "Could not delete", "error");
+          return;
+        }
+        onDeleted();
+      }}
+      disabled={busy}
+      className="rounded-full p-2 text-ink/35 transition hover:bg-red-50 hover:text-red-500 disabled:opacity-50 dark:hover:bg-red-500/10"
+      aria-label="Delete event"
+      title="Delete event"
+    >
+      <Trash2 size={15} />
+    </button>
+  );
+}
+
 export default function CalendarPage() {
   const router = useRouter();
   const { toast } = useToast();
@@ -244,6 +270,49 @@ export default function CalendarPage() {
           )}
         </div>
       </Card>
+
+      {/* Upcoming list — every event has an explicit edit + delete button */}
+      <section>
+        <h2 className="font-display mb-3 text-lg font-bold text-ink dark:text-cream">
+          Upcoming ({events.length})
+        </h2>
+        {events.length === 0 ? (
+          <p className="text-sm text-ink/55 dark:text-cream/55">
+            Nothing scheduled — click any day above to add your first event.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {[...events]
+              .sort((a, b) => a.date.localeCompare(b.date))
+              .slice(0, 20)
+              .map((e) => (
+                <div
+                  key={e.id}
+                  className="flex items-center gap-3 rounded-2xl border border-ink/8 bg-surface p-3 dark:border-cream/10 dark:bg-surface-dark"
+                >
+                  <span className="h-9 w-1.5 shrink-0 rounded-full" style={{ background: e.color }} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-bold text-ink dark:text-cream">{e.title}</p>
+                    <p className="text-xs text-ink/50 dark:text-cream/50">
+                      {e.date}
+                      {e.description ? ` · ${e.description.slice(0, 80)}` : ""}
+                    </p>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => openEdit(e)}>
+                    Edit
+                  </Button>
+                  <DeleteEventButton
+                    id={e.id}
+                    onDeleted={() => {
+                      toast("Event deleted");
+                      load();
+                    }}
+                  />
+                </div>
+              ))}
+          </div>
+        )}
+      </section>
 
       <Modal open={modal !== null} onClose={() => setModal(null)}>
         <h3 className="font-display text-lg font-bold text-ink dark:text-cream">

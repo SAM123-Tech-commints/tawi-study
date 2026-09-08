@@ -105,13 +105,18 @@ function DashboardInner() {
   const [newColor, setNewColor] = useState(CLASS_COLORS[0]);
   const [busy, setBusy] = useState<string | null>(null);
   const [timerSettings, setTimerSettings] = useState({ work: 25, break: 5, longBreak: 15, rounds: 4 });
+  const [timerOn, setTimerOn] = useState(false);
+  const [timerOpen, setTimerOpen] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
     const d = await getDashboardData();
     setData(d);
     const s = await getUserSettings();
-    if (s) setTimerSettings({ work: s.timerWork, break: s.timerBreak, longBreak: s.timerLongBreak, rounds: s.timerRounds });
+    if (s) {
+      setTimerSettings({ work: s.timerWork, break: s.timerBreak, longBreak: s.timerLongBreak, rounds: s.timerRounds });
+      setTimerOn(s.timerEnabled);
+    }
     setLoading(false);
     if (!d) router.push("/signin");
   }, [router]);
@@ -201,15 +206,32 @@ function DashboardInner() {
         </p>
       </section>
 
-      {/* Study Timer */}
-      <section className="mx-auto max-w-sm">
-        <Card className="p-6">
-          <PomodoroTimer
-            settings={timerSettings}
-            onSettingsClick={() => router.push("/settings")}
-          />
-        </Card>
-      </section>
+      {/* Study Timer — floating popup, only when enabled in Profile → Settings */}
+      {timerOn && timerOpen && (
+        <div className="fixed bottom-5 right-5 z-40 w-[300px] no-print">
+          <Card className="relative p-5 shadow-2xl">
+            <button
+              onClick={() => setTimerOpen(false)}
+              className="absolute right-3 top-3 rounded-full p-1 text-ink/40 hover:bg-ink/5 dark:text-cream/40"
+              aria-label="Hide timer"
+            >
+              ✕
+            </button>
+            <PomodoroTimer
+              settings={timerSettings}
+              onSettingsClick={() => router.push("/profile")}
+            />
+          </Card>
+        </div>
+      )}
+      {timerOn && !timerOpen && (
+        <button
+          onClick={() => setTimerOpen(true)}
+          className="fixed bottom-5 right-5 z-40 rounded-full bg-ink px-4 py-2.5 text-sm font-bold text-brand-300 shadow-xl no-print dark:bg-brand-500 dark:text-ink"
+        >
+          ⏱ Focus timer
+        </button>
+      )}
 
       {/* Create actions */}
       <section className="grid gap-4 md:grid-cols-2">

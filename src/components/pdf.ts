@@ -9,7 +9,13 @@ export async function extractPdfText(file: File): Promise<string> {
       promise: Promise<{
         numPages: number;
         getPage: (n: number) => Promise<{
-          getTextContent: () => Promise<{ items: { str?: string }[] }>;
+          getTextContent: () => Promise<{
+            items: {
+              str?: string;
+              fontName?: string;
+              transform?: number[];
+            }[];
+          }>;
         }>;
       }>;
     };
@@ -26,13 +32,48 @@ export async function extractPdfText(file: File): Promise<string> {
     useWorkerFetch: false,
     isEvalSupported: false,
   }).promise;
-  let out = "";
+  const pages: string[] = [];
   for (let i = 1; i <= Math.min(doc.numPages, 80); i++) {
     const page = await doc.getPage(i);
     const content = await page.getTextContent();
-    out += content.items.map((it) => it.str ?? "").join(" ") + "\n\n";
+    // Group glyph runs into visual lines (same baseline) so sentences keep
+    // their line breaks instead of collapsing into one merged paragraph.
+    const rows = new Map<number, { x: number; text: string }[]>();
+    for (const it of content.items) {
+      const str = (it.str ?? "").replace(/\s+/g, " ").trim();
+      if (!str) continue;
+      const t = it.transform ?? [0, 0, 0, 0, 0, 0];
+      const y = Math.round((t[5] ?? 0) / 2) * 2;
+      const x = t[4] ?? 0;
+      const bold = /bold|black|heavy|bd\b/i.test(it.fontName ?? "");
+      const text = bold ? `**${str}**` : str;
+      const list = rows.get(y) ?? [];
+      list.push({ x, text });
+      rows.set(y, list);
+    }
+    const orderedY = [...rows.keys()].sort((a, b) => b - a);
+    const lines = orderedY.map((y) =>
+      rows
+        .get(y)!
+        .sort((a, b) => a.x - b.x)
+        .map((r) => r.text)
+        .join(" ")
+        .replace(/\s+([.,;:!?%])/g, "$1")
+        .trim()
+    );
+    // De-hyphenate words split across lines: "photo- \n synthesis" → "photosynthesis".
+    const merged: string[] = [];
+    for (const line of lines) {
+      const prev = merged[merged.length - 1];
+      if (prev && /-$/.test(prev) && /^[a-z]/.test(line)) {
+        merged[merged.length - 1] = prev.slice(0, -1) + line;
+      } else {
+        merged.push(line);
+      }
+    }
+    pages.push(merged.join("\n"));
   }
-  return out.trim();
+  return pages.join("\n\n").trim();
 }
 
 export async function extractTextFile(file: File): Promise<string> {

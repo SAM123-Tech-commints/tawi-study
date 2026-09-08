@@ -4,7 +4,23 @@ import { YoutubeTranscript } from "youtube-transcript";
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { url, type } = body as { url?: string; type?: string };
+    const { url, type, key } = body as { url?: string; type?: string; key?: string };
+
+    // Optional collaboration key: collaborators pass the owner's Profile →
+    // Collaboration key so shared tooling can attribute usage. The endpoint
+    // stays public so existing clients keep working.
+    let collaborator: string | null = null;
+    if (typeof key === "string" && key.startsWith("tawi_")) {
+      try {
+        const { db } = await import("@/db");
+        const { users } = await import("@/db/schema");
+        const { eq } = await import("drizzle-orm");
+        const rows = await db.select({ id: users.id }).from(users).where(eq(users.apiKey, key)).limit(1);
+        if (rows.length) collaborator = rows[0].id;
+      } catch {
+        collaborator = null;
+      }
+    }
 
     if (type === "youtube" && url) {
       // Extract YouTube transcript
@@ -39,6 +55,7 @@ export async function POST(req: NextRequest) {
           title,
           author,
           text: `YouTube video: ${title}\nChannel: ${author}\n\n${transcript}`,
+          collaborator,
         });
       }
 
@@ -61,6 +78,7 @@ export async function POST(req: NextRequest) {
         title,
         author,
         text: `YouTube video: ${title}\nChannel: ${author}\n\n${description || "No transcript available. Paste the transcript for best results."}`,
+        collaborator,
       });
     }
 
@@ -109,7 +127,7 @@ export async function POST(req: NextRequest) {
       if (text.length < 100)
         return NextResponse.json({ ok: false, error: "Could not extract readable text." });
 
-      return NextResponse.json({ ok: true, title: pageTitle, text: text.slice(0, 50000) });
+      return NextResponse.json({ ok: true, title: pageTitle, text: text.slice(0, 50000), collaborator });
     }
 
     return NextResponse.json({ ok: false, error: "Provide url and type (youtube|webpage)" });

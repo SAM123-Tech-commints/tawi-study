@@ -11,6 +11,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Copy,
+  Download,
+  Eye,
+  EyeOff,
   Gamepad2,
   Layers,
   Lightbulb,
@@ -55,6 +58,7 @@ import {
   useToast,
 } from "@/components/ui";
 import { GameHub, type GameCard } from "@/components/games";
+import { keyTerms, splitSentences } from "@/lib/text";
 import type { CardRow, KitQuestionRow } from "@/db/schema";
 
 type KitData = NonNullable<Awaited<ReturnType<typeof getKitData>>>;
@@ -670,10 +674,52 @@ function StudyGuideTool({
   const [mode, setMode] = useState<"exact" | "notes" | "ai">("exact");
   const [busy, setBusy] = useState(false);
   const { kit } = data;
-  const keyTerms = useMemo(
+  const summaryTerms = useMemo(
     () => (kit.summary?.keyTerms ?? []).map((k) => k.term).filter(Boolean),
     [kit.summary]
   );
+
+  // Editable highlight terms: start from the AI summary, user can add/remove/
+  // refresh at any time. Exact text never changes — only what glows.
+  const [highlights, setHighlights] = useState<string[]>(summaryTerms);
+  const [newTerm, setNewTerm] = useState("");
+  const [showTerms, setShowTerms] = useState(false);
+  const [focusOnly, setFocusOnly] = useState(false);
+  useEffect(() => {
+    setHighlights(summaryTerms);
+  }, [kit.id, summaryTerms.join("|")]);
+
+  const refreshHighlights = () => {
+    const fresh = keyTerms(kit.content, 12).map((k) => k.term).filter(Boolean);
+    if (!fresh.length) {
+      toast("No clear terms found — add your own below.", "error");
+      return;
+    }
+    setHighlights(fresh);
+    toast(`Highlights refreshed — ${fresh.length} key terms ✨`);
+  };
+
+  const addTerm = () => {
+    const t = newTerm.trim();
+    if (t.length < 3) return;
+    if (highlights.some((h) => h.toLowerCase() === t.toLowerCase())) {
+      setNewTerm("");
+      return;
+    }
+    setHighlights((h) => [...h, t]);
+    setNewTerm("");
+  };
+
+  // Active-recall view: only sentences that contain a highlighted term.
+  const focusText = useMemo(() => {
+    if (!focusOnly || !highlights.length) return null;
+    const lower = highlights.map((h) => h.toLowerCase());
+    const hits = splitSentences(kit.content).filter((s) => {
+      const sl = s.toLowerCase();
+      return lower.some((h) => h.length > 2 && sl.includes(h));
+    });
+    return hits.length ? hits.join("\n") : null;
+  }, [focusOnly, highlights, kit.content]);
 
   const regenerate = async () => {
     setBusy(true);
@@ -686,6 +732,42 @@ function StudyGuideTool({
     }
     setBusy(false);
     onChanged();
+  };
+
+  const guideText = () => {
+    if (mode === "exact") return focusText ?? kit.content;
+    if (mode === "notes") {
+      const sections = kit.notes?.sections ?? [];
+      if (!sections.length) return "";
+      return sections.map((s) => `## ${s.heading}\n${s.content}`).join("\n\n");
+    }
+    const parts = [
+      `# ${kit.title} — AI summary`,
+      kit.summary?.overview ?? "",
+      ...((kit.summary?.bullets ?? []).map((b) => `• ${b}`)),
+      ...((kit.summary?.keyTerms ?? []).map((k) => `${k.term}: ${k.meaning}`)),
+    ].filter(Boolean);
+    return parts.join("\n\n");
+  };
+
+  const downloadTxt = () => {
+    const text = guideText();
+    if (!text.trim()) {
+      toast("Nothing to download yet.", "error");
+      return;
+    }
+    const blob = new Blob([`${kit.title}\n${mode === "exact" ? "Exact text" : mode === "notes" ? "Study notes" : "AI summary"} · tawi.study\n\n${text}`], {
+      type: "text/plain;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${kit.title.slice(0, 60).replace(/[^\w\- ]+/g, "") || "study-guide"}-${mode}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast("Downloaded — open it anywhere, or Print / PDF it 📄");
   };
 
   return (
@@ -709,6 +791,9 @@ function StudyGuideTool({
           <Button variant="outline" size="sm" onClick={() => window.print()}>
             <Printer size={14} /> Print / PDF
           </Button>
+          <Button variant="outline" size="sm" onClick={downloadTxt}>
+            <Download size={14} /> Download
+          </Button>
           <Button variant="outline" size="sm" onClick={regenerate} disabled={busy}>
             {busy ? <Spinner className="h-4 w-4" /> : <RefreshCw size={14} />} Regenerate
           </Button>
@@ -724,12 +809,79 @@ function StudyGuideTool({
       </div>
 
       {mode === "exact" && (
-        <Card className="max-h-[70vh] overflow-auto print:max-h-none print:overflow-visible print:shadow-none">
-          <p className="mb-3 text-xs font-bold uppercase tracking-widest text-ink/45 dark:text-cream/45">
-            Your material, word for word — key terms highlighted
-          </p>
-          <RichText text={kit.content} highlights={keyTerms} />
-        </Card>
+        <>
+          <Card className="mb-3 no-print">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <button
+                onClick={() => setShowTerms((s) => !s)}
+                className="text-sm font-bold text-ink hover:underline dark:text-cream"
+              >
+                {showTerms ? "Hide" : "Edit"} highlight terms ({highlights.length})
+              </button>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={refreshHighlights}>
+                  <RefreshCw size={13} /> Refresh highlights
+                </Button>
+                <Button
+                  variant={focusOnly ? "dark" : "outline"}
+                  size="sm"
+                  onClick={() => setFocusOnly((f) => !f)}
+                  title="Show only sentences containing highlighted terms — read, recall, reveal"
+                >
+                  {focusOnly ? <EyeOff size={13} /> : <Eye size={13} />} {focusOnly ? "Full text" : "Active recall"}
+                </Button>
+              </div>
+            </div>
+            {showTerms && (
+              <div className="mt-3">
+                <div className="flex flex-wrap gap-1.5">
+                  {highlights.map((h) => (
+                    <span
+                      key={h}
+                      className="inline-flex items-center gap-1 rounded-full bg-brand-100 px-2.5 py-1 text-xs font-bold text-ink dark:bg-brand-500/15 dark:text-brand-300"
+                    >
+                      {h}
+                      <button
+                        onClick={() => setHighlights((list) => list.filter((x) => x !== h))}
+                        className="rounded-full p-0.5 hover:bg-ink/10 dark:hover:bg-cream/15"
+                        aria-label={`Remove ${h}`}
+                      >
+                        <X size={11} />
+                      </button>
+                    </span>
+                  ))}
+                  {highlights.length === 0 && (
+                    <span className="text-xs text-ink/50 dark:text-cream/50">No highlights — add terms below.</span>
+                  )}
+                </div>
+                <div className="mt-2.5 flex gap-2">
+                  <Input
+                    value={newTerm}
+                    onChange={(e) => setNewTerm(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && addTerm()}
+                    placeholder="Add a term to highlight, e.g. Chloroplast"
+                  />
+                  <Button size="sm" onClick={addTerm} disabled={newTerm.trim().length < 3}>
+                    <Plus size={13} /> Add
+                  </Button>
+                </div>
+              </div>
+            )}
+          </Card>
+          <Card className="max-h-[70vh] overflow-auto print:max-h-none print:overflow-visible print:shadow-none">
+            <p className="mb-3 text-xs font-bold uppercase tracking-widest text-ink/45 dark:text-cream/45">
+              Your material, word for word — key terms highlighted
+              {focusOnly ? " · active-recall view" : ""}
+            </p>
+            {focusText !== null && !focusText ? (
+              <p className="text-sm text-ink/60 dark:text-cream/60">
+                No sentences match your highlight terms — add terms above or switch back to full text.
+              </p>
+            ) : (
+              <RichText text={focusText ?? kit.content} highlights={highlights} />
+            )}
+          </Card>
+        </>
       )}
 
       {mode === "notes" && (
@@ -737,12 +889,15 @@ function StudyGuideTool({
           {kit.notes?.sections?.length ? (
             kit.notes.sections.map((s, i) => (
               <Card key={i}>
-                <h3 className="font-display mb-2 flex items-center gap-2 text-lg font-bold text-ink dark:text-cream">
-                  <span className="grid h-6 w-6 place-items-center rounded-lg bg-brand-500 text-[12px] font-bold text-ink">
-                    {i + 1}
-                  </span>
-                  {s.heading}
-                </h3>
+                <div className="mb-2 flex items-start justify-between gap-2">
+                  <h3 className="font-display flex items-center gap-2 text-lg font-bold text-ink dark:text-cream">
+                    <span className="grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-brand-500 text-[12px] font-bold text-ink">
+                      {i + 1}
+                    </span>
+                    {s.heading}
+                  </h3>
+                  <CopyButton text={`## ${s.heading}\n${s.content}`} label="Copy" size="sm" />
+                </div>
                 <RichText text={s.content} />
               </Card>
             ))

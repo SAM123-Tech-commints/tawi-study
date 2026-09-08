@@ -435,11 +435,16 @@ export function EmptyState({
 /* ------------------------------- RichText ---------------------------- */
 
 function renderInline(text: string, key: number, highlights?: string[]): ReactNode[] {
-  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  // **bold** first, then lone *emphasis* (kept from PDFs/slides).
+  const parts = text.split(/(\*\*[^*]+\*\*|\*[^*\n]+\*)/g);
   return parts.map((p, i) =>
-    p.startsWith("**") && p.endsWith("**") ? (
+    p.startsWith("**") && p.endsWith("**") && p.length > 4 ? (
       <strong key={`${key}-${i}`} className="font-semibold text-ink dark:text-cream">
-        {p.slice(2, -2)}
+        {applyHighlights(p.slice(2, -2), `${key}-${i}`, highlights)}
+      </strong>
+    ) : p.startsWith("*") && p.endsWith("*") && p.length > 2 && !p.startsWith("**") ? (
+      <strong key={`${key}-${i}`} className="font-semibold text-ink dark:text-cream">
+        {applyHighlights(p.slice(1, -1), `${key}-${i}`, highlights)}
       </strong>
     ) : (
       <span key={`${key}-${i}`}>{applyHighlights(p, `${key}-${i}`, highlights)}</span>
@@ -474,12 +479,18 @@ function applyHighlights(text: string, key: string, highlights?: string[]): Reac
 }
 
 export function RichText({ text, className, highlights }: { text: string; className?: string; highlights?: string[] }) {
+  // Rebuild readable structure without rewriting a single word: keep every
+  // original line break, split inline bullets/numbers onto their own lines,
+  // and never glue or reorder words.
   const normalized = text
     .replace(/\r\n/g, "\n")
-    .replace(/(?<=[a-z0-9])(?=[A-Z])/g, "\n")
-    .replace(/(?<=\.)(?=\s+[A-Z])/g, "\n")
-    .replace(/(?<=\!|\?)(?=\s+[A-Z])/g, "\n")
-    .replace(/(?<=\d)(?=\.\s)/g, "\n");
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n[ \t]+/g, "\n")
+    // Inline bullets ("…memory • Traversal — …") each get their own line.
+    .replace(/[ \t]+[•▪‣·]/g, "\n• ")
+    // Inline numbered points ("…locations. 2. Array Index — …") each get a line.
+    .replace(/(\S)\s+(\d{1,3}[.)]\s+[A-Z*])/g, "$1\n$2")
+    .replace(/\n{3,}/g, "\n\n");
   const lines = normalized.split("\n");
   const blocks: ReactNode[] = [];
   let para: string[] = [];

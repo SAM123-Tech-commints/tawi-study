@@ -36,7 +36,7 @@ import {
 } from "@/lib/auth";
 import { initialSrs, schedule } from "@/lib/srs";
 import { SAMPLE_BIO } from "@/lib/sample";
-import { normalize } from "@/lib/text";
+import { extractTerms, normalize } from "@/lib/text";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -235,6 +235,91 @@ export async function getAvatarAction(): Promise<string | null> {
   });
 }
 
+export async function getProfileAction(): Promise<{
+  name: string;
+  email: string;
+  role: string | null;
+  institution: string | null;
+  avatar: string | null;
+  isAdmin: boolean;
+  isGuest: boolean;
+} | null> {
+  return guardRead(async () => {
+    const user = await getUser();
+    if (!user) return null;
+    return {
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      institution: user.institution,
+      avatar: (user as { avatar?: string | null }).avatar ?? null,
+      isAdmin: isAdminUser(user),
+      isGuest: user.isGuest,
+    };
+  });
+}
+
+export async function updateProfileAction(opts: {
+  name?: string;
+  role?: string;
+  institution?: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  return guard(async () => {
+    const user = await getUser();
+    if (!user) return { ok: false, error: authError() };
+    if (user.isGuest) return { ok: false, error: GUEST_MESSAGE };
+    const patch: { name?: string; role?: string | null; institution?: string | null } = {};
+    if (opts.name !== undefined) {
+      const name = opts.name.trim();
+      if (name.length < 2) return { ok: false, error: "Please enter your name." };
+      patch.name = name.slice(0, 80);
+    }
+    if (opts.role !== undefined) {
+      if (!["student", "educator"].includes(opts.role)) return { ok: false, error: "Pick student or educator." };
+      patch.role = opts.role;
+    }
+    if (opts.institution !== undefined) patch.institution = opts.institution.trim().slice(0, 120) || null;
+    if (!Object.keys(patch).length) return { ok: true };
+    await db.update(users).set(patch).where(eq(users.id, user.id));
+    return { ok: true };
+  });
+}
+
+function newCollabKey(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  return `tawi_${Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")}`;
+}
+
+export async function getApiKeyAction(): Promise<{ ok: boolean; key?: string | null; error?: string }> {
+  return guard(async () => {
+    const user = await getUser();
+    if (!user) return { ok: false, error: authError() };
+    if (user.isGuest) return { ok: false, error: GUEST_MESSAGE };
+    return { ok: true, key: (user as { apiKey?: string | null }).apiKey ?? null };
+  });
+}
+
+export async function regenerateApiKeyAction(): Promise<{ ok: boolean; key?: string; error?: string }> {
+  return guard(async () => {
+    const user = await getUser();
+    if (!user) return { ok: false, error: authError() };
+    if (user.isGuest) return { ok: false, error: GUEST_MESSAGE };
+    const key = newCollabKey();
+    await db.update(users).set({ apiKey: key }).where(eq(users.id, user.id));
+    return { ok: true, key };
+  });
+}
+
+export async function revokeApiKeyAction(): Promise<{ ok: boolean; error?: string }> {
+  return guard(async () => {
+    const user = await getUser();
+    if (!user) return { ok: false, error: authError() };
+    if (user.isGuest) return { ok: false, error: GUEST_MESSAGE };
+    await db.update(users).set({ apiKey: null }).where(eq(users.id, user.id));
+    return { ok: true };
+  });
+}
+
 export async function updateSettingsAction(settings: {
   timerWork?: number;
   timerBreak?: number;
@@ -282,9 +367,20 @@ export async function getUserSettings(): Promise<{
 /* ============================ KIT GENERATION =========================== */
 
 async function buildKitContent(content: string, cardCount: number, questionCount: number) {
-  const cardsDrafts = await generateCards(content, Math.max(6, cardCount));
+  // Question/card volume is driven by how many term→definition pairs the
+  // material actually contains — a 5-term handout should not produce 30 cards.
+  let terms = 0;
+  try {
+    terms = extractTerms(content).length;
+  } catch {
+    terms = 0;
+  }
+  const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
+  const cardsN = terms > 0 ? clamp(terms, 6, 30) : clamp(cardCount, 6, 30);
+  const questionsN = terms > 0 ? clamp(terms, 6, 20) : clamp(questionCount, 6, 20);
+  const cardsDrafts = await generateCards(content, Math.max(6, cardsN));
   const questionsDrafts = await generateQuestions(content, {
-    count: Math.max(6, questionCount),
+    count: Math.max(6, questionsN),
     types: ["mcq", "true_false", "short"],
   });
   const summary = await generateSummary(content);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { createKitAction, fetchUrlAction, getSessionInfo } from "@/lib/actions";
 import { extractPdfText, extractTextFile } from "@/components/pdf";
+import { extractTerms } from "@/lib/text";
 import {
   Badge,
   Button,
@@ -186,6 +187,24 @@ export default function NewKitPage() {
   };
 
   const totalChars = sources.reduce((a, s) => a + s.text.length, 0);
+  const detectedTerms = useMemo(() => {
+    if (!sources.length) return 0;
+    try {
+      return extractTerms(sources.map((s) => s.text).join("\n\n").slice(0, 60000)).length;
+    } catch {
+      return 0;
+    }
+  }, [sources]);
+
+  const autoCounts = () => {
+    if (!detectedTerms) {
+      toast("No clear term→definition pairs detected yet — add more material.", "error");
+      return;
+    }
+    setCardCount(Math.min(30, Math.max(6, detectedTerms)));
+    setQuestionCount(Math.min(20, Math.max(6, detectedTerms)));
+    toast(`Counts set from ${detectedTerms} detected terms ✨`);
+  };
 
   const generate = async () => {
     if (!sources.length) {
@@ -455,7 +474,16 @@ export default function NewKitPage() {
       {/* Settings */}
       {sources.length > 0 && (
         <Card className="mt-5">
-          <h3 className="mb-4 font-bold text-ink dark:text-cream">Generation settings</h3>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+            <h3 className="font-bold text-ink dark:text-cream">Generation settings</h3>
+            <Button variant="outline" size="sm" onClick={autoCounts} disabled={!detectedTerms}>
+              <Sparkles size={14} /> Auto from {detectedTerms} terms
+            </Button>
+          </div>
+          <p className="mb-4 text-xs text-ink/55 dark:text-cream/55">
+            Card & question volume follows the term→definition pairs in your material
+            {detectedTerms ? ` (detected ~${detectedTerms})` : " — add material to detect terms"}.
+          </p>
           <div className="grid gap-5 sm:grid-cols-2">
             <Field label={`Flashcards: ${cardCount}`}>
               <input

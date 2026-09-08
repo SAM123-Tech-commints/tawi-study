@@ -190,6 +190,30 @@ export function extractTerms(text: string): TermDef[] {
     out.push({ term: t, definition: def });
   };
 
+  // 0. Explicit emphasis first: **bold** (and *star* terms from PDFs/slides)
+  // are the author's own "this will be on the test" signal.
+  for (const line of lines) {
+    const boldRe = /\*\*([^*]{3,60}?)\*\*/g;
+    let m: RegExpExecArray | null;
+    while ((m = boldRe.exec(line)) !== null) {
+      const after = line.slice(m.index + m[0].length).replace(/^[:\-–—]\s*/, "").trim();
+      const def = after.length >= 10 ? after.slice(0, 300) : line.replace(m[0], "").trim().slice(0, 300);
+      if (def.length >= 10) add(m[1], def);
+    }
+  }
+  if (out.length < 5) {
+    for (const line of lines) {
+      const starRe = /(^|[\s(])\*([^*\n]{3,50}?)\*(?=[\s).,:;\-–—]|$)/g;
+      let m: RegExpExecArray | null;
+      while ((m = starRe.exec(line)) !== null) {
+        if (/^\d+$/.test(m[2].trim())) continue;
+        const after = line.slice(m.index + m[0].length).replace(/^[:\-–—]\s*/, "").trim();
+        const def = after.length >= 10 ? after.slice(0, 300) : line.replace(m[0], "").trim().slice(0, 300);
+        if (def.length >= 10) add(m[2], def);
+      }
+    }
+  }
+
   // 1. Glossary-style lines: "Term — definition" or "Term: definition"
   for (const line of lines) {
     const m = line.match(/^(.{1,70}?)\s*[:\-–—]\s+(.{15,300})$/);

@@ -14,6 +14,7 @@ import {
   NotebookPen,
   Plus,
   ShieldCheck,
+  User,
   X,
 } from "lucide-react";
 import { signoutAction } from "@/lib/actions";
@@ -143,6 +144,12 @@ export function AppShell({ user, children }: { user: ShellUser; children: React.
                     className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-ink/70 hover:bg-ink/5 dark:text-cream/70 dark:hover:bg-cream/10"
                   >
                     <GraduationCap size={15} /> Account type
+                  </Link>
+                  <Link
+                    href="/profile"
+                    className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-ink/70 hover:bg-ink/5 dark:text-cream/70 dark:hover:bg-cream/10"
+                  >
+                    <User size={15} /> Profile & settings
                   </Link>
                   {user.isAdmin && (
                     <Link

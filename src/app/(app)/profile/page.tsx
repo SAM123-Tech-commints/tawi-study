@@ -1,64 +1,170 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
-import { User, Settings, Shield, LogOut, RefreshCw, XCircle } from "lucide-react";
-import { Button, Card, Input, Spinner, useToast } from "@/components/ui";
-import { signoutAction } from "@/lib/actions";
-import { getUser } from "@/lib/auth";
-import { getUserSettings, updateSettingsAction } from "@/lib/actions";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Camera, Check, Copy, KeyRound, LogOut, RefreshCw, Settings2, Trash2, User } from "lucide-react";
+import { Avatar, Button, Card, Field, Input, Spinner, useToast } from "@/components/ui";
+import {
+  getApiKeyAction,
+  getAvatarAction,
+  getProfileAction,
+  getUserSettings,
+  regenerateApiKeyAction,
+  removeAvatarAction,
+  revokeApiKeyAction,
+  signoutAction,
+  updateAvatarAction,
+  updateProfileAction,
+  updateSettingsAction,
+} from "@/lib/actions";
 
 export default function ProfilePage() {
   const router = useRouter();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [role, setRole] = useState("student");
+  const [institution, setInstitution] = useState("");
+  const [avatar, setAvatar] = useState<string | null>(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [apiKey, setApiKey] = useState<string | null>(null);
-  const [showApi, setShowApi] = useState(false);
+  const [keyBusy, setKeyBusy] = useState(false);
   const [timerEnabled, setTimerEnabled] = useState(false);
-  const timerLabel = timerEnabled ? "Disable Timer" : "Enable Timer";
+  const [timerWork, setTimerWork] = useState(25);
+  const [timerBreak, setTimerBreak] = useState(5);
+  const [timerLongBreak, setTimerLongBreak] = useState(15);
+  const [timerRounds, setTimerRounds] = useState(4);
+  const [theme, setTheme] = useState("system");
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const [profile, settings, keyRes, av] = await Promise.all([
+      getProfileAction(),
+      getUserSettings(),
+      getApiKeyAction(),
+      getAvatarAction(),
+    ]);
+    if (!profile) {
+      router.push("/signin");
+      return;
+    }
+    setName(profile.name);
+    setEmail(profile.email);
+    setRole(profile.role ?? "student");
+    setInstitution(profile.institution ?? "");
+    setAvatar(av ?? profile.avatar);
+    if (settings) {
+      setTimerEnabled(settings.timerEnabled);
+      setTimerWork(settings.timerWork);
+      setTimerBreak(settings.timerBreak);
+      setTimerLongBreak(settings.timerLongBreak);
+      setTimerRounds(settings.timerRounds);
+      setTheme(settings.theme);
+    }
+    if (keyRes.ok) setApiKey(keyRes.key ?? null);
+    setLoading(false);
+  }, [router]);
 
   useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      const user = await getUser();
-      if (!user) {
-        router.push("/signin");
-        return;
-      }
-      const settings = await getUserSettings();
-      if (settings) {
-        const storedApi = (user as { settings: any }).settings?.apiKey ?? null;
-        setApiKey(storedApi ?? null);
-        setShowApi(!!storedApi);
-        setTimerEnabled((settings as any).timerEnabled ?? false);
-      }
-      setLoading(false);
-    };
     load();
-  }, []);
+  }, [load]);
 
-  const handleLogout = async () => {
-    await signoutAction();
-    router.push("/signin");
-    toast("Signed out.");
+  const saveAccount = async () => {
+    setSaving(true);
+    const res = await updateProfileAction({ name, role, institution });
+    setSaving(false);
+    if (res.ok) {
+      toast("Profile updated ✨");
+      router.refresh();
+    } else toast(res.error ?? "Could not save", "error");
   };
 
-  const handleTimerToggle = async () => {
-    const res = await updateSettingsAction({
-      timerWork: 25,
-      timerBreak: 5,
-      timerLongBreak: 15,
-      timerRounds: 4,
-      theme: "system",
-      language: "en",
-      timerEnabled: !timerEnabled,
-    });
-    if (res.ok) {
-      setTimerEnabled(!timerEnabled);
-      toast(`Timer ${!timerEnabled ? "enabled" : "disabled"}`);
-    } else {
-      toast(res.error ?? "Could not update", "error");
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 500000) {
+      toast("Image must be under 500KB", "error");
+      return;
     }
+    setUploadingAvatar(true);
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const dataUrl = reader.result as string;
+      const res = await updateAvatarAction(dataUrl);
+      setUploadingAvatar(false);
+      if (res.ok) {
+        setAvatar(dataUrl);
+        toast("Profile picture updated");
+        router.refresh();
+      } else toast(res.error ?? "Could not upload", "error");
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const removeAvatar = async () => {
+    setUploadingAvatar(true);
+    const res = await removeAvatarAction();
+    setUploadingAvatar(false);
+    if (res.ok) {
+      setAvatar(null);
+      toast("Profile picture removed");
+      router.refresh();
+    }
+  };
+
+  const saveSettings = async () => {
+    setSaving(true);
+    const res = await updateSettingsAction({
+      timerEnabled,
+      timerWork,
+      timerBreak,
+      timerLongBreak,
+      timerRounds,
+      theme,
+    });
+    setSaving(false);
+    if (res.ok) toast("Settings saved");
+    else toast(res.error ?? "Could not save", "error");
+  };
+
+  const regenKey = async () => {
+    setKeyBusy(true);
+    const res = await regenerateApiKeyAction();
+    setKeyBusy(false);
+    if (res.ok && res.key) {
+      setApiKey(res.key);
+      toast("New collaboration key generated 🔑");
+    } else toast(res.error ?? "Could not generate key", "error");
+  };
+
+  const revokeKey = async () => {
+    setKeyBusy(true);
+    const res = await revokeApiKeyAction();
+    setKeyBusy(false);
+    if (res.ok) {
+      setApiKey(null);
+      toast("Collaboration key revoked");
+    } else toast(res.error ?? "Could not revoke key", "error");
+  };
+
+  const copyKey = async () => {
+    if (!apiKey) return;
+    try {
+      await navigator.clipboard.writeText(apiKey);
+    } catch {
+      /* clipboard unavailable */
+    }
+    toast("Key copied — share it with collaborators 🤝");
+  };
+
+  const signOut = async () => {
+    await signoutAction();
+    toast("Signed out. See you soon!");
+    router.push("/signin");
+    router.refresh();
   };
 
   if (loading) {
@@ -70,67 +176,203 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="mx-auto max-w-xl space-y-8 p-6">
-      {/* Profile Header */}
-      <div className="text-center border-b border-ink/10 pb-6">
-        <div className="grid h-24 w-24 place-items-center rounded-full mb-4 bg-brand-100 dark:bg-cream/[0.03]">
-          <User size={32} className="text-brand-600 dark:text-brand-400" />
-        </div>
-        <h1 className="font-display text-2xl font-bold tracking-tight text-ink dark:text-cream">
-          Tawi Study
+    <div className="mx-auto max-w-2xl space-y-6">
+      <section>
+        <h1 className="font-display flex items-center gap-2 text-3xl font-bold tracking-tight text-ink dark:text-cream">
+          <User size={26} /> Profile
         </h1>
         <p className="mt-1 text-[15px] text-ink/60 dark:text-cream/60">
-          Account: Student
+          Your identity, account type, settings and collaboration key — all in one place.
         </p>
-      </div>
+      </section>
 
-      {/* API Key section */}
-      {showApi && (
-        <Card className="p-6">
-          <h2 className="font-display text-lg font-bold text-ink dark:text-cream">API Key</h2>
-          <p className="mt-2 text-[13px] text-ink/60 dark:text-cream/60">
-            Your API key lets Tawi connect to AI services.
-          </p>
-          <div className="mt-4 flex gap-2">
-            <Input
-              value={apiKey ?? ""}
-              onChange={(e) => setApiKey(e.target.value)}
-              readOnly
-              placeholder="API key (hidden for security)"
-              className="flex-1 py-2 px-3 rounded border border-ink/20 bg-cream/5 dark:border-cream/15 dark:text-cream/20"
+      {/* Identity */}
+      <Card className="space-y-4 p-6">
+        <div className="flex items-center gap-5">
+          <div className="relative">
+            {avatar ? (
+              <img
+                src={avatar}
+                alt="Profile"
+                className="h-20 w-20 rounded-full object-cover ring-2 ring-ink/10 dark:ring-cream/15"
+              />
+            ) : (
+              <Avatar name={name || email} size={80} />
+            )}
+            {uploadingAvatar && (
+              <div className="absolute inset-0 grid place-items-center rounded-full bg-black/40">
+                <Spinner className="h-6 w-6 border-white/30 border-t-white" />
+              </div>
+            )}
+          </div>
+          <div className="space-y-2">
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()} disabled={uploadingAvatar}>
+                <Camera size={14} /> Upload image
+              </Button>
+              {avatar && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={removeAvatar}
+                  disabled={uploadingAvatar}
+                  className="text-red-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10"
+                >
+                  <Trash2 size={14} /> Remove
+                </Button>
+              )}
+            </div>
+            <p className="text-[12px] text-ink/45 dark:text-cream/45">JPG, PNG or WebP. Max 500KB.</p>
+          </div>
+          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} />
+        </div>
+        <Field label="Full name">
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" />
+        </Field>
+        <Field label="Email">
+          <Input value={email} disabled className="opacity-60" />
+        </Field>
+      </Card>
+
+      {/* Account type */}
+      <Card className="space-y-4 p-6">
+        <h2 className="text-lg font-bold text-ink dark:text-cream">Account type</h2>
+        <div className="grid grid-cols-2 gap-2.5">
+          {(
+            [
+              ["student", "✏️ Student", "Study kits, flashcards & practice tests"],
+              ["educator", "🎓 Educator", "Assignments & worksheets to share"],
+            ] as const
+          ).map(([id, label, desc]) => (
+            <button
+              key={id}
+              onClick={() => setRole(id)}
+              className={`rounded-2xl border-2 p-4 text-left transition ${
+                role === id
+                  ? "border-brand-500 bg-brand-50 dark:bg-brand-500/10"
+                  : "border-ink/10 hover:border-ink/25 dark:border-cream/15"
+              }`}
+            >
+              <p className="text-sm font-bold text-ink dark:text-cream">{label}</p>
+              <p className="mt-1 text-xs text-ink/55 dark:text-cream/55">{desc}</p>
+            </button>
+          ))}
+        </div>
+        <Field label="Institution">
+          <Input
+            value={institution}
+            onChange={(e) => setInstitution(e.target.value)}
+            placeholder="e.g. University of the Philippines"
+          />
+        </Field>
+        <Button onClick={saveAccount} disabled={saving || name.trim().length < 2}>
+          {saving ? <Spinner className="border-ink/30 border-t-ink" /> : <Check size={15} />} Save profile
+        </Button>
+      </Card>
+
+      {/* Settings — directly below account type */}
+      <Card className="space-y-5 p-6">
+        <h2 className="flex items-center gap-2 text-lg font-bold text-ink dark:text-cream">
+          <Settings2 size={18} /> Settings
+        </h2>
+        <div className="flex items-center justify-between gap-3 rounded-2xl bg-ink/4 p-3.5 dark:bg-cream/5">
+          <div>
+            <p className="text-sm font-bold text-ink dark:text-cream">Study timer popup</p>
+            <p className="text-xs text-ink/55 dark:text-cream/55">
+              Off by default. Turn on to show a floating focus timer on your dashboard.
+            </p>
+          </div>
+          <button
+            onClick={() => setTimerEnabled((v) => !v)}
+            className={`relative h-7 w-12 shrink-0 rounded-full transition ${timerEnabled ? "bg-brand-500" : "bg-ink/15 dark:bg-cream/20"}`}
+            aria-label="Toggle timer popup"
+          >
+            <span
+              className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-all ${timerEnabled ? "left-6" : "left-1"}`}
             />
-            <Button variant="outline" size="sm" onClick={() => setApiKey("")}>
-              <RefreshCw size={14} /> Regenerate
+          </button>
+        </div>
+        {timerEnabled && (
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <Field label="Focus (min)">
+              <Input type="number" min={1} max={120} value={timerWork} onChange={(e) => setTimerWork(Math.max(1, Number(e.target.value) || 25))} />
+            </Field>
+            <Field label="Short break">
+              <Input type="number" min={1} max={60} value={timerBreak} onChange={(e) => setTimerBreak(Math.max(1, Number(e.target.value) || 5))} />
+            </Field>
+            <Field label="Long break">
+              <Input type="number" min={1} max={60} value={timerLongBreak} onChange={(e) => setTimerLongBreak(Math.max(1, Number(e.target.value) || 15))} />
+            </Field>
+            <Field label="Rounds">
+              <Input type="number" min={1} max={10} value={timerRounds} onChange={(e) => setTimerRounds(Math.max(1, Number(e.target.value) || 4))} />
+            </Field>
+          </div>
+        )}
+        <Field label="Theme">
+          <div className="flex gap-2">
+            {(["light", "dark", "system"] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => setTheme(t)}
+                className={`rounded-full px-4 py-2 text-sm font-bold transition ${
+                  theme === t
+                    ? "bg-brand-500 text-ink"
+                    : "bg-ink/5 text-ink/60 hover:bg-ink/10 dark:bg-cream/10 dark:text-cream/60"
+                }`}
+              >
+                {t === "light" ? "☀️ Light" : t === "dark" ? "🌙 Dark" : "💻 System"}
+              </button>
+            ))}
+          </div>
+        </Field>
+        <Button onClick={saveSettings} disabled={saving} variant="outline">
+          {saving ? <Spinner className="h-4 w-4" /> : <Check size={15} />} Save settings
+        </Button>
+      </Card>
+
+      {/* Collaboration API key */}
+      <Card className="space-y-4 p-6">
+        <h2 className="flex items-center gap-2 text-lg font-bold text-ink dark:text-cream">
+          <KeyRound size={18} /> Collaboration key
+        </h2>
+        <p className="text-[13px] leading-relaxed text-ink/60 dark:text-cream/60">
+          Share this key with people you collaborate with so their tools can fetch your shared kits
+          through the API (<code className="rounded bg-ink/5 px-1 dark:bg-cream/10">POST /api/extract</code> with{" "}
+          <code className="rounded bg-ink/5 px-1 dark:bg-cream/10">{"{ key }"}</code>). Regenerating
+          invalidates the old key instantly.
+        </p>
+        {apiKey ? (
+          <div className="flex gap-2">
+            <Input value={apiKey} readOnly className="font-mono text-xs" onFocus={(e) => e.target.select()} />
+            <Button variant="outline" size="sm" onClick={copyKey}>
+              <Copy size={14} /> Copy
             </Button>
           </div>
-        </Card>
-      )}
-
-      {/* Timer toggle */}
-      {showApi && (
-        <Card className="p-6">
-          <h2 className="font-display text-lg font-bold text-ink dark:text-cream">Study Timer</h2>
-          <p className="mt-2 text-[13px] text-ink/60 dark:text-cream/60">
-            Pomodoro-style timer for focused study sessions.
+        ) : (
+          <p className="rounded-xl bg-ink/4 p-3 text-[13px] text-ink/55 dark:bg-cream/5 dark:text-cream/55">
+            No key yet — generate one to start collaborating.
           </p>
-          <Button onClick={handleTimerToggle} className="w-full">
-            {timerLabel}
+        )}
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={regenKey} disabled={keyBusy}>
+            <RefreshCw size={14} /> {apiKey ? "Regenerate" : "Generate"} key
           </Button>
-        </Card>
-      )}
+          {apiKey && (
+            <Button variant="ghost" size="sm" onClick={revokeKey} disabled={keyBusy} className="text-red-500">
+              <Trash2 size={14} /> Revoke
+            </Button>
+          )}
+        </div>
+      </Card>
 
-      {/* Logout */}
-      <Card className="p-6 border border-red-500/20">
-        <h2 className="font-display text-lg font-bold text-ink dark:text-cream">Log Out</h2>
-        <p className="mt-2 text-[13px] text-ink/60 dark:text-cream/60">
-          Are you sure you want to sign out?
-        </p>
+      <Card className="border border-red-500/20 p-6">
+        <h2 className="text-lg font-bold text-ink dark:text-cream">Sign out</h2>
         <div className="mt-4 flex gap-2">
-          <Button variant="danger" onClick={handleLogout}>
-            Sign Out
+          <Button variant="danger" onClick={signOut}>
+            <LogOut size={15} /> Sign out
           </Button>
           <Button variant="outline" onClick={() => router.push("/dashboard")}>
-            Cancel
+            Back to dashboard
           </Button>
         </div>
       </Card>
