@@ -99,12 +99,43 @@ export default function NewKitPage() {
       const isImage = /\.(png|jpe?g|webp|bmp|tiff?)$/.test(lower);
       let text = "";
       if (lower.endsWith(".pdf")) text = await extractPdfText(file);
-      else if (isImage) text = "";
-      else text = await extractTextFile(file);
-      if (text.trim().length < 80) {
-        // Probably a scanned PDF or a photo of notes — offer server-side OCR.
+      else if (isImage) {
+        // Auto-send images to OCR immediately
+        setOcrBusy(true);
+        const form = new FormData();
+        form.append("file", file);
+        const res = await fetch("/api/ocr", { method: "POST", body: form });
+        const data = await res.json();
+        setOcrBusy(false);
+        if (data.ok && data.text?.length > 80) {
+          addSource(file.name + " (OCR)", data.text);
+          toast("Image text extracted successfully");
+          setExtracting(false);
+          return;
+        }
+        // If OCR failed or too short, still add the image as a source
         setOcrFile(file);
-        toast("This looks like a scanned file with no readable text. Try “Scan with OCR” below.", "error");
+        toast("Could not extract text from this image. Try a clearer image.", "error");
+        setExtracting(false);
+        return;
+      } else text = await extractTextFile(file);
+      if (text.trim().length < 80) {
+        // Probably a scanned PDF — offer server-side OCR.
+        setOcrFile(file);
+        toast("This looks like a scanned file. Scanning with OCR...", "error");
+        // Auto-trigger OCR for scanned PDFs too
+        setOcrBusy(true);
+        const form = new FormData();
+        form.append("file", file);
+        const res = await fetch("/api/ocr", { method: "POST", body: form });
+        const data = await res.json();
+        setOcrBusy(false);
+        if (data.ok && data.text?.length > 80) {
+          addSource(file.name + " (OCR)", data.text);
+          toast("Scanned text extracted successfully");
+          setOcrFile(null);
+        }
+        setExtracting(false);
         return;
       }
       addSource(file.name, text);

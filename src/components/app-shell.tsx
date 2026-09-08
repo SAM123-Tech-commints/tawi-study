@@ -13,6 +13,7 @@ import {
   Menu,
   NotebookPen,
   Plus,
+  Settings,
   ShieldCheck,
   X,
 } from "lucide-react";
@@ -47,6 +48,7 @@ const NAV = [
   { href: "/assignments", label: "Assignments", icon: ClipboardList },
   { href: "/calendar", label: "Calendar", icon: CalendarDays },
   { href: "/workspace", label: "Workspace", icon: NotebookPen },
+  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 export function AppShell({ user, children }: { user: ShellUser; children: React.ReactNode }) {

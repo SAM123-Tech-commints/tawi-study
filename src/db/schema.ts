@@ -16,6 +16,8 @@ export const users = pgTable("users", {
   passwordHash: text("password_hash"),
   role: text("role"), // student | educator
   institution: text("institution"),
+  avatar: text("avatar"), // base64 data URL or null
+  settings: jsonb("settings"), // { theme, timerWork, timerBreak, timerLongBreak, timerRounds, language }
   isGuest: boolean("is_guest").notNull().default(false),
   isAdmin: boolean("is_admin").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

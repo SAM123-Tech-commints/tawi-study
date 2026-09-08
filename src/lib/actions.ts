@@ -208,6 +208,74 @@ export async function saveProfileAction(opts: {
   });
 }
 
+export async function updateAvatarAction(avatarDataUrl: string): Promise<{ ok: boolean; error?: string }> {
+  return guard(async () => {
+    const user = await getUser();
+    if (!user) return { ok: false, error: "Not signed in." };
+    if (avatarDataUrl.length > 500000) return { ok: false, error: "Image too large (max 500KB)." };
+    await db.update(users).set({ avatar: avatarDataUrl }).where(eq(users.id, user.id));
+    return { ok: true };
+  });
+}
+
+export async function removeAvatarAction(): Promise<{ ok: boolean }> {
+  return guard(async () => {
+    const user = await getUser();
+    if (!user) return { ok: false };
+    await db.update(users).set({ avatar: null }).where(eq(users.id, user.id));
+    return { ok: true };
+  });
+}
+
+export async function getAvatarAction(): Promise<string | null> {
+  return guardRead(async () => {
+    const user = await getUser();
+    if (!user) return null;
+    return (user as { avatar?: string | null }).avatar ?? null;
+  });
+}
+
+export async function updateSettingsAction(settings: {
+  timerWork?: number;
+  timerBreak?: number;
+  timerLongBreak?: number;
+  timerRounds?: number;
+  theme?: string;
+  language?: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  return guard(async () => {
+    const user = await getUser();
+    if (!user) return { ok: false };
+    const current = (user.settings as Record<string, unknown>) ?? {};
+    const merged = { ...current, ...settings };
+    await db.update(users).set({ settings: merged }).where(eq(users.id, user.id));
+    return { ok: true };
+  });
+}
+
+export async function getUserSettings(): Promise<{
+  timerWork: number;
+  timerBreak: number;
+  timerLongBreak: number;
+  timerRounds: number;
+  theme: string;
+  language: string;
+} | null> {
+  return guardRead(async () => {
+    const user = await getUser();
+    if (!user) return null;
+    const s = (user.settings as Record<string, unknown>) ?? {};
+    return {
+      timerWork: (s.timerWork as number) ?? 25,
+      timerBreak: (s.timerBreak as number) ?? 5,
+      timerLongBreak: (s.timerLongBreak as number) ?? 15,
+      timerRounds: (s.timerRounds as number) ?? 4,
+      theme: (s.theme as string) ?? "system",
+      language: (s.language as string) ?? "en",
+    };
+  });
+}
+
 /* ============================ KIT GENERATION =========================== */
 
 async function buildKitContent(content: string, cardCount: number, questionCount: number) {
@@ -1075,39 +1143,107 @@ export async function fetchUrlAction(url: string): Promise<{
   try {
   const u = new URL(url);
   const host = u.hostname.replace("www.", "");
+
+  /* ---- YouTube ---- */
   if (host === "youtu.be" || host === "youtube.com" || host === "m.youtube.com") {
     const videoId =
       u.hostname === "youtu.be" ? u.pathname.slice(1).split("/")[0] : u.searchParams.get("v");
-    if (videoId) {
+    if (!videoId) return { ok: false, error: "Could not parse YouTube video ID." };
+
+    // 1) Get metadata via oEmbed
+    let title = "YouTube video";
+    let author = "";
+    try {
       const ores = await fetch(
-        `https://www.youtube.com/oembed?url=${encodeURIComponent(
-          `https://www.youtube.com/watch?v=${videoId}`
-        )}&format=json`,
-        { signal: AbortSignal.timeout(10000) }
+        `https://www.youtube.com/oembed?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}`)}&format=json`,
+        { signal: AbortSignal.timeout(8000) }
       );
       if (ores.ok) {
         const d = await ores.json();
-        return {
-          ok: true,
-          title: d.title ?? "YouTube video",
-          text: `YouTube video: ${d.title ?? ""}\n${d.author_name ? `Channel: ${d.author_name}\n` : ""}\n\nTip: for the best questions and flashcards, paste the transcript or your own notes from this video instead.`,
-        };
+        title = d.title ?? title;
+        author = d.author_name ?? "";
       }
+    } catch {}
+
+    // 2) Try to get transcript via youtube-transcript
+    let transcript = "";
+    try {
+      const { YoutubeTranscript } = await import("youtube-transcript");
+      const items = await YoutubeTranscript.fetchTranscript(videoId, { lang: "en" });
+      transcript = items.map((i: { text: string }) => i.text).join(" ");
+    } catch {}
+
+    if (transcript.length > 200) {
+      return {
+        ok: true,
+        title,
+        text: `YouTube video: ${title}\nChannel: ${author}\n\n${transcript}`,
+      };
     }
+
+    // 3) Fallback: try to scrape the page description
+    let description = "";
+    try {
+      const pageRes = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
+        headers: { "user-agent": "Mozilla/5.0 (compatible; TawiStudyBot/1.0)" },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (pageRes.ok) {
+        const html = await pageRes.text();
+        const descMatch = html.match(/"shortDescription":"((?:[^"\\]|\\.)*)"/);
+        if (descMatch) description = descMatch[1].replace(/\\n/g, "\n").replace(/\\"/g, '"');
+      }
+    } catch {}
+
+    if (description.length > 200) {
+      return {
+        ok: true,
+        title,
+        text: `YouTube video: ${title}\nChannel: ${author}\n\n${description}`,
+      };
+    }
+
     return {
-      ok: false,
-      error: "Could not read this YouTube video automatically. Paste the transcript or your own notes instead.",
+      ok: true,
+      title,
+      text: `YouTube video: ${title}\nChannel: ${author}\n\nNo transcript or description could be extracted. Paste the transcript or your own notes for best results.`,
     };
   }
+
+  /* ---- Regular web page ---- */
   const res = await fetch(url, {
-    headers: { "user-agent": "Mozilla/5.0 (compatible; TawiStudyBot/1.0)" },
+    headers: {
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "accept-language": "en-US,en;q=0.9",
+    },
     signal: AbortSignal.timeout(15000),
+    redirect: "follow",
   });
   if (!res.ok) return { ok: false, error: `Could not fetch the page (HTTP ${res.status}).` };
+  const contentType = res.headers.get("content-type") ?? "";
   const html = await res.text();
-  const text = html
+
+  // Extract title
+  const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+  const ogTitle = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i);
+  const pageTitle = ogTitle?.[1]?.trim() ?? titleMatch?.[1]?.trim() ?? new URL(url).hostname;
+
+  // Try to extract article/main content first, fallback to full body
+  let contentHtml = html;
+  const articleMatch = html.match(/<article[^>]*>([\s\S]*?)<\/article>/i);
+  const mainMatch = html.match(/<main[^>]*>([\s\S]*?)<\/main>/i);
+  if (articleMatch) contentHtml = articleMatch[1];
+  else if (mainMatch) contentHtml = mainMatch[1];
+
+  // Strip scripts, styles, nav, footer, header
+  const text = contentHtml
     .replace(/<script[\s\S]*?<\/script>/gi, " ")
     .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<nav[\s\S]*?<\/nav>/gi, " ")
+    .replace(/<footer[\s\S]*?<\/footer>/gi, " ")
+    .replace(/<header[\s\S]*?<\/header>/gi, " ")
+    .replace(/<aside[\s\S]*?<\/aside>/gi, " ")
     .replace(/<[^>]+>/g, "\n")
     .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&")
@@ -1115,15 +1251,17 @@ export async function fetchUrlAction(url: string): Promise<{
     .replace(/&gt;/g, ">")
     .replace(/&#39;/g, "'")
     .replace(/&quot;/g, '"')
+    .replace(/&#\d+;/g, "")
     .replace(/[ \t]+/g, " ")
-    .replace(/\n{2,}/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
     .trim();
-  if (text.length < 200)
+
+  if (text.length < 100)
     return { ok: false, error: "Could not extract readable text from this page. Try pasting the content instead." };
-  const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+
   return {
     ok: true,
-    title: titleMatch?.[1]?.trim() || new URL(url).hostname,
+    title: pageTitle,
     text: text.slice(0, 50000),
   };
   } catch {

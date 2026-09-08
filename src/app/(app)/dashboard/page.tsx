@@ -41,6 +41,8 @@ import {
   Spinner,
   useToast,
 } from "@/components/ui";
+import { PomodoroTimer } from "@/components/timer";
+import { getUserSettings } from "@/lib/actions";
 
 type DashData = NonNullable<Awaited<ReturnType<typeof getDashboardData>>>;
 
@@ -102,11 +104,14 @@ function DashboardInner() {
   const [newClass, setNewClass] = useState("");
   const [newColor, setNewColor] = useState(CLASS_COLORS[0]);
   const [busy, setBusy] = useState<string | null>(null);
+  const [timerSettings, setTimerSettings] = useState({ work: 25, break: 5, longBreak: 15, rounds: 4 });
 
   const load = useCallback(async () => {
     setLoading(true);
     const d = await getDashboardData();
     setData(d);
+    const s = await getUserSettings();
+    if (s) setTimerSettings({ work: s.timerWork, break: s.timerBreak, longBreak: s.timerLongBreak, rounds: s.timerRounds });
     setLoading(false);
     if (!d) router.push("/signin");
   }, [router]);
@@ -194,6 +199,16 @@ function DashboardInner() {
         <p className="mt-1 text-[15px] text-ink/60 dark:text-cream/60">
           Ready to turn your notes into grades? Pick a tool below or jump back into a recent kit.
         </p>
+      </section>
+
+      {/* Study Timer */}
+      <section className="mx-auto max-w-sm">
+        <Card className="p-6">
+          <PomodoroTimer
+            settings={timerSettings}
+            onSettingsClick={() => router.push("/settings")}
+          />
+        </Card>
       </section>
 
       {/* Create actions */}
