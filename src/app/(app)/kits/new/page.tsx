@@ -32,6 +32,7 @@ import {
 interface Source {
   name: string;
   text: string;
+  noTranscript?: boolean;
 }
 
 const GENERATE_STAGES = [
@@ -83,8 +84,8 @@ export default function NewKitPage() {
 
   const sliceByPages = (text: string) => text.slice(0, Math.max(1, pages) * MAX_PAGE_CHARS);
 
-  const addSource = (name: string, text: string) => {
-    setSources((s) => [...s, { name, text }]);
+  const addSource = (name: string, text: string, noTranscript = false) => {
+    setSources((s) => [...s, { name, text, noTranscript }]);
     if (!title) setTitle(name.replace(/\.[^.]+$/, "").slice(0, 60));
     toast(`“${name}” added to your kit`);
   };
@@ -184,7 +185,10 @@ export default function NewKitPage() {
       toast(res.error ?? "Could not fetch this link", "error");
       return;
     }
-    addSource(res.title ?? "Web content", res.text ?? "");
+    addSource(res.title ?? "Web content", res.text ?? "", res.transcript === false);
+    if (res.transcript === false) {
+      toast("⚠️ No transcript found — paste it manually for full-quality kits.", "error");
+    }
     setUrl("");
   };
 
@@ -446,6 +450,12 @@ export default function NewKitPage() {
             <span className="text-xs font-semibold text-ink/50 dark:text-cream/50">{totalChars.toLocaleString()} characters</span>
           </div>
           <div className="space-y-2.5">
+            {sources.some((s) => s.noTranscript) && (
+              <div className="rounded-2xl border border-amber-400/50 bg-amber-50 p-3.5 text-[13px] font-semibold text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
+                ⚠️ One or more links had no transcript — switch to “Paste notes”, paste the transcript, and
+                remove the weak source for full-quality flashcards and questions.
+              </div>
+            )}
             {sources.map((s, i) => (
               <div key={i} className="rounded-2xl bg-ink/4 p-3.5 dark:bg-cream/5">
                 <div className="flex items-center gap-3">
@@ -453,7 +463,14 @@ export default function NewKitPage() {
                     <FileText size={16} />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-bold text-ink dark:text-cream">{s.name}</p>
+                    <p className="truncate text-sm font-bold text-ink dark:text-cream">
+                      {s.name}{" "}
+                      {s.noTranscript && (
+                        <span className="ml-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
+                          no transcript
+                        </span>
+                      )}
+                    </p>
                     <p className="text-xs text-ink/50 dark:text-cream/50">{s.text.slice(0, 140)}…</p>
                   </div>
                   <button

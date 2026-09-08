@@ -131,9 +131,44 @@ export default function KitToolPage() {
 
 /* ============================ FLASHCARDS ============================ */
 
+function DefSourceToggle({
+  value,
+  onChange,
+  aiCount,
+}: {
+  value: "exact" | "ai";
+  onChange: (v: "exact" | "ai") => void;
+  aiCount: number;
+}) {
+  return (
+    <div className="inline-flex items-center gap-1 rounded-full border border-ink/10 bg-ink/5 p-1 dark:border-cream/10 dark:bg-cream/5" title="Choose where card definitions come from">
+      {(
+        [
+          ["exact", "Exact text"],
+          ["ai", `✨ AI summary${aiCount ? ` (${aiCount})` : ""}`],
+        ] as const
+      ).map(([id, label]) => (
+        <button
+          key={id}
+          onClick={() => onChange(id)}
+          className={cn(
+            "rounded-full px-3 py-1 text-xs font-bold transition-all active:scale-95",
+            value === id
+              ? "bg-surface text-ink shadow-sm dark:bg-cream/15 dark:text-cream"
+              : "text-ink/55 hover:text-ink dark:text-cream/55 dark:hover:text-cream"
+          )}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function FlashcardsTool({ data, onChanged }: { data: KitData; onChanged: () => void }) {
   const { toast } = useToast();
   const [mode, setMode] = useState<"deck" | "list">("deck");
+  const [defSource, setDefSource] = useState<"exact" | "ai">("exact");
   const [intro, setIntro] = useState(false);
   const [queue, setQueue] = useState<CardRow[]>([]);
   const [pos, setPos] = useState(0);
@@ -169,6 +204,25 @@ function FlashcardsTool({ data, onChanged }: { data: KitData; onChanged: () => v
   const current = queue[pos];
   const done = queue.length === 0 || pos >= queue.length;
 
+  // AI-summary definitions come from the kit's key terms; anything without a
+  // match falls back to the exact-text definition. Exact stays the default.
+  const aiDefs = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const k of data.kit.summary?.keyTerms ?? []) {
+      const key = k.term.trim().toLowerCase();
+      if (key && k.meaning && !m.has(key)) m.set(key, k.meaning);
+    }
+    return m;
+  }, [data.kit.summary]);
+  const aiCount = aiDefs.size;
+  const defFor = (card: CardRow): { text: string; ai: boolean } => {
+    if (defSource === "ai") {
+      const hit = aiDefs.get(card.term.trim().toLowerCase());
+      if (hit) return { text: hit, ai: true };
+    }
+    return { text: card.definition, ai: false };
+  };
+
   const rate = async (rating: "again" | "unsure" | "got") => {
     if (!current) return;
     setSession((s) => ({ ...s, [rating]: s[rating] + 1 }));
@@ -183,7 +237,7 @@ function FlashcardsTool({ data, onChanged }: { data: KitData; onChanged: () => v
   if (mode === "list") {
     return (
       <div>
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <Tabs
             tabs={[
               { id: "deck", label: "Deck" },
@@ -192,31 +246,40 @@ function FlashcardsTool({ data, onChanged }: { data: KitData; onChanged: () => v
             value={mode}
             onChange={(v) => setMode(v as "deck" | "list")}
           />
-          <span className="text-sm font-semibold text-ink/50 dark:text-cream/50">{data.cards.length} cards</span>
+          <div className="flex items-center gap-2">
+            <DefSourceToggle value={defSource} onChange={setDefSource} aiCount={aiCount} />
+            <span className="text-sm font-semibold text-ink/50 dark:text-cream/50">{data.cards.length} cards</span>
+          </div>
         </div>
         <AddCardForm kitId={data.kit.id} onAdded={onChanged} />
         <div className="mt-4 space-y-3">
-          {data.cards.map((c) => (
-            <Card key={c.id} className="p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-[15px] font-bold text-ink dark:text-cream">{c.term}</p>
-                  <p className="mt-1 text-[13.5px] leading-relaxed text-ink/60 dark:text-cream/60">{c.definition}</p>
+          {data.cards.map((c) => {
+            const d = defFor(c);
+            return (
+              <Card key={c.id} className="p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[15px] font-bold text-ink dark:text-cream">{c.term}</p>
+                    <p className="mt-1 text-[13.5px] leading-relaxed text-ink/60 dark:text-cream/60">{d.text}</p>
+                    <span className={`mt-1.5 inline-block rounded-full px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide ${d.ai ? "bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-300" : "bg-ink/5 text-ink/50 dark:bg-cream/10 dark:text-cream/50"}`}>
+                      {d.ai ? "✨ AI definition" : "Exact text"}
+                    </span>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      await deleteCardAction(c.id);
+                      toast("Card deleted");
+                      onChanged();
+                    }}
+                    className="rounded-full p-2 text-ink/35 transition hover:bg-red-50 hover:text-red-500 active:scale-90 dark:hover:bg-red-500/10"
+                    aria-label="Delete card"
+                  >
+                    <Trash2 size={15} />
+                  </button>
                 </div>
-                <button
-                  onClick={async () => {
-                    await deleteCardAction(c.id);
-                    toast("Card deleted");
-                    onChanged();
-                  }}
-                  className="rounded-full p-2 text-ink/35 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-500/10"
-                  aria-label="Delete card"
-                >
-                  <Trash2 size={15} />
-                </button>
-              </div>
-            </Card>
-          ))}
+              </Card>
+            );
+          })}
         </div>
       </div>
     );
@@ -225,7 +288,7 @@ function FlashcardsTool({ data, onChanged }: { data: KitData; onChanged: () => v
   /* ------- deck mode ------- */
   return (
     <div className="mx-auto max-w-2xl">
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <Tabs
           tabs={[
             { id: "deck", label: "Deck" },
@@ -234,10 +297,13 @@ function FlashcardsTool({ data, onChanged }: { data: KitData; onChanged: () => v
           value={mode}
           onChange={(v) => setMode(v as "deck" | "list")}
         />
-        <div className="flex items-center gap-3 text-xs font-bold">
-          <span className="text-green-600 dark:text-green-400">😎 {session.got}</span>
-          <span className="text-amber-500">🤔 {session.unsure}</span>
-          <span className="text-red-500">😬 {session.again}</span>
+        <div className="flex items-center gap-3">
+          <DefSourceToggle value={defSource} onChange={setDefSource} aiCount={aiCount} />
+          <div className="flex items-center gap-3 text-xs font-bold">
+            <span className="text-green-600 dark:text-green-400">😎 {session.got}</span>
+            <span className="text-amber-500">🤔 {session.unsure}</span>
+            <span className="text-red-500">😬 {session.again}</span>
+          </div>
         </div>
       </div>
 
@@ -251,9 +317,11 @@ function FlashcardsTool({ data, onChanged }: { data: KitData; onChanged: () => v
                 <p className="font-display mt-4 text-center text-2xl font-bold leading-snug text-ink dark:text-cream">{current.term}</p>
               </div>
               <div className="flip-face flip-back flex flex-col items-center justify-center rounded-3xl border border-brand-500/50 bg-brand-50 p-8 dark:bg-brand-500/10">
-                <p className="text-xs font-bold uppercase tracking-widest text-brand-700 dark:text-brand-400">Definition</p>
+                <p className="text-xs font-bold uppercase tracking-widest text-brand-700 dark:text-brand-400">
+                  Definition · {defFor(current).ai ? "✨ AI summary" : "Exact text"}
+                </p>
                 <p className="mt-3 max-h-56 overflow-auto text-center text-[17px] font-medium leading-relaxed text-ink/85 dark:text-cream/85">
-                  {current.definition}
+                  {defFor(current).text}
                 </p>
               </div>
             </div>

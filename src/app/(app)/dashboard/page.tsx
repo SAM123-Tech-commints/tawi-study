@@ -41,8 +41,6 @@ import {
   Spinner,
   useToast,
 } from "@/components/ui";
-import { TimerPopup } from "@/components/timer";
-import { getUserSettings } from "@/lib/actions";
 
 type DashData = NonNullable<Awaited<ReturnType<typeof getDashboardData>>>;
 
@@ -104,19 +102,11 @@ function DashboardInner() {
   const [newClass, setNewClass] = useState("");
   const [newColor, setNewColor] = useState(CLASS_COLORS[0]);
   const [busy, setBusy] = useState<string | null>(null);
-  const [timerSettings, setTimerSettings] = useState({ work: 25, break: 5, longBreak: 15, rounds: 4 });
-  const [timerOn, setTimerOn] = useState(false);
-  const [timerOpen, setTimerOpen] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
     const d = await getDashboardData();
     setData(d);
-    const s = await getUserSettings();
-    if (s) {
-      setTimerSettings({ work: s.timerWork, break: s.timerBreak, longBreak: s.timerLongBreak, rounds: s.timerRounds });
-      setTimerOn(s.timerEnabled);
-    }
     setLoading(false);
     if (!d) router.push("/signin");
   }, [router]);
@@ -206,22 +196,7 @@ function DashboardInner() {
         </p>
       </section>
 
-      {/* Study Timer — draggable popup, only when enabled in Profile → Settings */}
-      {timerOn && timerOpen && (
-        <TimerPopup
-          settings={timerSettings}
-          onSettingsClick={() => router.push("/profile")}
-          onClose={() => setTimerOpen(false)}
-        />
-      )}
-      {timerOn && !timerOpen && (
-        <button
-          onClick={() => setTimerOpen(true)}
-          className="fixed bottom-5 right-5 z-40 rounded-full bg-ink px-4 py-2.5 text-sm font-bold text-brand-300 shadow-xl transition hover:scale-105 active:scale-95 no-print dark:bg-brand-500 dark:text-ink"
-        >
-          ⏱ Focus timer
-        </button>
-      )}
+      {/* The focus timer lives globally (all pages) — see AppShell. */}
 
       {/* Create actions */}
       <section className="grid gap-4 md:grid-cols-2">

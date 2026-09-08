@@ -17,10 +17,11 @@ import {
   User,
   X,
 } from "lucide-react";
-import { signoutAction } from "@/lib/actions";
+import { getUserSettings, signoutAction } from "@/lib/actions";
 import { Avatar, cn, useToast } from "@/components/ui";
 import { ThemeToggle } from "@/components/theme";
 import { OwlLogo } from "@/components/logo";
+import { TimerPopup } from "@/components/timer";
 import { isAdminUser } from "@/lib/admin";
 
 export interface ShellUser {
@@ -58,6 +59,21 @@ export function AppShell({ user, children }: { user: ShellUser; children: React.
   const [menuOpen, setMenuOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const [timerOn, setTimerOn] = useState(false);
+  const [timerOpen, setTimerOpen] = useState(true);
+  const [timerSettings, setTimerSettings] = useState({ work: 25, break: 5, longBreak: 15, rounds: 4 });
+
+  // Global timer: one instance for every app page. The popup itself keeps
+  // ticking across client-side navigation; localStorage resume inside the
+  // timer covers full page reloads.
+  useEffect(() => {
+    if (user.isGuest) return;
+    getUserSettings().then((s) => {
+      if (!s) return;
+      setTimerSettings({ work: s.timerWork, break: s.timerBreak, longBreak: s.timerLongBreak, rounds: s.timerRounds });
+      setTimerOn(s.timerEnabled);
+    }).catch(() => {});
+  }, [user.isGuest]);
 
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
@@ -232,6 +248,22 @@ export function AppShell({ user, children }: { user: ShellUser; children: React.
         )}
         {children}
       </main>
+      {/* Global focus timer — every page, draggable, minimizable, reload-proof */}
+      {timerOn && timerOpen && (
+        <TimerPopup
+          settings={timerSettings}
+          onSettingsClick={() => router.push("/profile")}
+          onClose={() => setTimerOpen(false)}
+        />
+      )}
+      {timerOn && !timerOpen && (
+        <button
+          onClick={() => setTimerOpen(true)}
+          className="fixed bottom-5 right-5 z-40 rounded-full bg-ink px-4 py-2.5 text-sm font-bold text-brand-300 shadow-xl transition hover:scale-105 active:scale-95 no-print dark:bg-brand-500 dark:text-ink"
+        >
+          ⏱ Focus timer
+        </button>
+      )}
     </div>
   );
 }

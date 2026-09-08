@@ -13,6 +13,35 @@ interface TimerSettings {
   rounds: number;
 }
 
+const TIMER_KEY = "tia-timer";
+
+type SavedTimer = {
+  mode: TimerMode;
+  secondsLeft: number;
+  round: number;
+  running: boolean;
+  savedAt: number;
+};
+
+function loadSavedTimer(): SavedTimer | null {
+  try {
+    const raw = localStorage.getItem(TIMER_KEY);
+    if (!raw) return null;
+    const s = JSON.parse(raw) as Partial<SavedTimer>;
+    if (!["work", "break", "longBreak"].includes(String(s.mode))) return null;
+    if (typeof s.secondsLeft !== "number" || typeof s.round !== "number" || typeof s.savedAt !== "number") return null;
+    return {
+      mode: s.mode as TimerMode,
+      secondsLeft: Math.max(0, Math.min(7200, Math.floor(s.secondsLeft))),
+      round: Math.max(1, Math.min(20, Math.floor(s.round))),
+      running: s.running === true,
+      savedAt: s.savedAt,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function PomodoroTimer({
   settings,
   onSettingsClick,
@@ -20,13 +49,40 @@ export function PomodoroTimer({
   settings: TimerSettings;
   onSettingsClick?: () => void;
 }) {
-  const [mode, setMode] = useState<TimerMode>("work");
-  const [secondsLeft, setSecondsLeft] = useState(settings.work * 60);
-  const [running, setRunning] = useState(false);
-  const [round, setRound] = useState(1);
+  const [saved] = useState<SavedTimer | null>(() =>
+    typeof window === "undefined" ? null : loadSavedTimer()
+  );
+  const [mode, setMode] = useState<TimerMode>(saved?.mode ?? "work");
+  const [secondsLeft, setSecondsLeft] = useState(() => {
+    if (!saved) return settings.work * 60;
+    if (saved.running) {
+      // The timer kept conceptually running while the page was closed.
+      const elapsed = Math.floor((Date.now() - saved.savedAt) / 1000);
+      const left = saved.secondsLeft - elapsed;
+      if (left > 0) return left;
+    }
+    return saved.secondsLeft;
+  });
+  const [running, setRunning] = useState(() => {
+    if (!saved?.running) return false;
+    return saved.secondsLeft - Math.floor((Date.now() - saved.savedAt) / 1000) > 0;
+  });
+  const [round, setRound] = useState(saved?.round ?? 1);
   const [muted, setMuted] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Persist every tick/change so a reload or navigation never loses the session.
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        TIMER_KEY,
+        JSON.stringify({ mode, secondsLeft, round, running, savedAt: Date.now() })
+      );
+    } catch {
+      /* ignore */
+    }
+  }, [mode, secondsLeft, round, running]);
 
   // Reset when settings change
   useEffect(() => {

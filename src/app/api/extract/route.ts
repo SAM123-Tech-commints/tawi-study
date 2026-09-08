@@ -49,11 +49,43 @@ export async function POST(req: NextRequest) {
         transcript = items.map((i) => i.text).join(" ");
       } catch {}
 
+      // Backup: TranscriptAPI.com (server-side key only)
+      if (transcript.length <= 200) {
+        const tapKey = (process.env.TRANSCRIPT_API_KEY ?? "").trim();
+        if (tapKey) {
+          try {
+            const tapRes = await fetch(
+              `https://transcriptapi.com/api/v2/youtube/transcript?video_url=${encodeURIComponent(videoId)}&format=json`,
+              {
+                headers: { Authorization: `Bearer ${tapKey}` },
+                signal: AbortSignal.timeout(20000),
+              }
+            );
+            if (tapRes.ok) {
+              const tap = await tapRes.json();
+              const segs = Array.isArray(tap.transcript) ? tap.transcript : tap.segments ?? [];
+              const joined = segs
+                .map((s: { text?: string }) => String(s?.text ?? "").trim())
+                .filter(Boolean)
+                .join(" ");
+              if (joined.length > 200) {
+                transcript = joined;
+                if (title === "YouTube video") {
+                  const mt = tap?.metadata?.title ?? tap?.title;
+                  if (typeof mt === "string" && mt.trim()) title = mt.trim();
+                }
+              }
+            }
+          } catch {}
+        }
+      }
+
       if (transcript.length > 200) {
         return NextResponse.json({
           ok: true,
           title,
           author,
+          transcript: true,
           text: `YouTube video: ${title}\nChannel: ${author}\n\n${transcript}`,
           collaborator,
         });
@@ -77,7 +109,8 @@ export async function POST(req: NextRequest) {
         ok: true,
         title,
         author,
-        text: `YouTube video: ${title}\nChannel: ${author}\n\n${description || "No transcript available. Paste the transcript for best results."}`,
+        transcript: description.length > 200,
+        text: `YouTube video: ${title}\nChannel: ${author}\n\n${description ? `⚠️ No transcript was available, so this is only the video description — questions will be weaker. Paste the transcript for full-quality kits.\n\n${description}` : "⚠️ WARNING: no transcript or description could be extracted. Paste the transcript or your own notes for best results."}`,
         collaborator,
       });
     }

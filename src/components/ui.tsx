@@ -188,11 +188,11 @@ export function Modal({
   }, [open, onClose]);
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-ink/40 backdrop-blur-sm animate-fade" onClick={onClose} />
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-4">
+      <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm animate-fade" onClick={onClose} />
       <div
         className={cn(
-          "relative z-10 w-full rounded-3xl border border-ink/10 bg-surface p-6 shadow-2xl animate-pop dark:border-cream/10 dark:bg-surface-dark",
+          "relative z-10 my-auto max-h-[90dvh] w-full overflow-y-auto rounded-3xl border border-ink/10 bg-surface p-6 shadow-2xl animate-pop dark:border-cream/10 dark:bg-surface-dark",
           wide ? "max-w-2xl" : "max-w-md"
         )}
       >

@@ -1328,6 +1328,7 @@ export async function fetchUrlAction(url: string): Promise<{
   error?: string;
   title?: string;
   text?: string;
+  transcript?: boolean;
 }> {
   try {
   const u = new URL(url);
@@ -1362,10 +1363,48 @@ export async function fetchUrlAction(url: string): Promise<{
       transcript = items.map((i: { text: string }) => i.text).join(" ");
     } catch {}
 
+    // 2b) Backup: TranscriptAPI.com (server-side key, never exposed to the browser)
+    if (transcript.length <= 200) {
+      const tapKey = (process.env.TRANSCRIPT_API_KEY ?? "").trim();
+      if (tapKey) {
+        try {
+          const tapRes = await fetch(
+            `https://transcriptapi.com/api/v2/youtube/transcript?video_url=${encodeURIComponent(videoId)}&format=json`,
+            {
+              headers: { Authorization: `Bearer ${tapKey}` },
+              signal: AbortSignal.timeout(20000),
+            }
+          );
+          if (tapRes.ok) {
+            const tap = await tapRes.json();
+            const segs = Array.isArray(tap.transcript) ? tap.transcript : tap.segments ?? [];
+            const joined = segs
+              .map((s: { text?: string }) => String(s?.text ?? "").trim())
+              .filter(Boolean)
+              .join(" ");
+            if (joined.length > 200) {
+              transcript = joined;
+              if (!title || title === "YouTube video") {
+                const mt = tap?.metadata?.title ?? tap?.title;
+                if (typeof mt === "string" && mt.trim()) title = mt.trim();
+              }
+            }
+          } else if (tapRes.status === 402) {
+            console.warn("[fetchUrl] TranscriptAPI credits exhausted (402).");
+          } else if (tapRes.status === 404) {
+            console.warn("[fetchUrl] TranscriptAPI: no transcript (404).");
+          }
+        } catch (err) {
+          console.warn("[fetchUrl] TranscriptAPI backup failed:", err instanceof Error ? err.message : err);
+        }
+      }
+    }
+
     if (transcript.length > 200) {
       return {
         ok: true,
         title,
+        transcript: true,
         text: `YouTube video: ${title}\nChannel: ${author}\n\n${transcript}`,
       };
     }
@@ -1388,14 +1427,16 @@ export async function fetchUrlAction(url: string): Promise<{
       return {
         ok: true,
         title,
-        text: `YouTube video: ${title}\nChannel: ${author}\n\n${description}`,
+        transcript: false,
+        text: `YouTube video: ${title}\nChannel: ${author}\n\n⚠️ No transcript was available, so this is only the video description — questions will be weaker. Paste the transcript for full-quality kits.\n\n${description}`,
       };
     }
 
     return {
       ok: true,
       title,
-      text: `YouTube video: ${title}\nChannel: ${author}\n\nNo transcript or description could be extracted. Paste the transcript or your own notes for best results.`,
+      transcript: false,
+      text: `YouTube video: ${title}\nChannel: ${author}\n\n⚠️ WARNING: no transcript or description could be extracted. Paste the transcript or your own notes for best results.`,
     };
   }
 
