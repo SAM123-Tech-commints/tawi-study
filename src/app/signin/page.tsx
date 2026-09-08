@@ -7,6 +7,7 @@ import { ArrowRight } from "lucide-react";
 import { googleSigninAction, guestSigninAction, signinAction, signupAction } from "@/lib/actions";
 import { Button, Field, Input, Spinner, useToast } from "@/components/ui";
 import { OwlLogo } from "@/components/logo";
+import { ThemeToggle } from "@/components/theme";
 
 declare global {
   interface Window {
@@ -171,6 +172,11 @@ function SigninInner() {
       {/* Floating ambient blobs */}
       <div className="pointer-events-none absolute -left-24 top-16 h-72 w-72 animate-float rounded-full bg-brand-200/50 blur-3xl dark:bg-brand-500/10" />
       <div className="pointer-events-none absolute -right-24 bottom-10 h-80 w-80 animate-float-slow rounded-full bg-brand-100/70 blur-3xl dark:bg-brand-500/10" />
+
+      {/* Light / dark toggle — same mode system as every other page */}
+      <div className="absolute right-4 top-4 animate-in">
+        <ThemeToggle />
+      </div>
 
       <div className="relative w-full max-w-md animate-in-scale">
         <div className="mb-8 text-center animate-in">

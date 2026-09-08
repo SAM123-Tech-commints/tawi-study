@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { Badge, Button, cn } from "@/components/ui";
 import { OwlLogo } from "@/components/logo";
+import { ThemeToggle } from "@/components/theme";
 
 /* ------------------------------ Nav ------------------------------ */
 
@@ -41,7 +42,8 @@ function Nav() {
           <a href="#pricing" className="hover:text-ink dark:hover:text-cream">Pricing</a>
         </nav>
         <div className="flex items-center gap-2">
-          <Link href="/signin" className="hidden rounded-full px-4 py-2 text-sm font-semibold text-ink/70 hover:bg-ink/5 sm:block dark:text-cream/70 dark:hover:bg-cream/10">
+          <ThemeToggle />
+          <Link href="/signin" className="hidden rounded-full px-4 py-2 text-sm font-semibold text-ink/70 transition hover:bg-ink/5 active:scale-95 sm:block dark:text-cream/70 dark:hover:bg-cream/10">
             Sign in
           </Link>
           <Link
@@ -68,10 +70,38 @@ function HeroVisual() {
       <div className="relative mx-auto max-w-lg animate-in-scale">
         <img
           src="/hero.png"
-          alt="Tawi Study — flashcards, Smart Study, streaks and study guides"
+          alt="Studying with Tawi — flashcards, Smart Study and streaks"
           className="w-full rounded-[2rem] border border-ink/8 object-cover shadow-2xl dark:border-cream/10"
           onError={() => setImgOk(false)}
         />
+        {/* Floating text cards stay as real text: crisp in both light and dark mode */}
+        <div className="absolute -left-3 top-6 animate-float rounded-2xl border border-ink/10 bg-surface/95 p-3.5 shadow-xl backdrop-blur dark:border-cream/15 dark:bg-surface-dark/95 sm:-left-8">
+          <p className="text-[11px] font-bold uppercase tracking-wide text-ink/50 dark:text-cream/50">Flashcard</p>
+          <p className="mt-0.5 text-sm font-bold text-ink dark:text-cream">Chlorophyll?</p>
+          <p className="mt-1 max-w-[160px] text-[11px] leading-snug text-ink/60 dark:text-cream/60">
+            The green pigment that absorbs light energy…
+          </p>
+        </div>
+        <div className="absolute -right-2 top-1/3 animate-float-slow rounded-2xl border border-ink/10 bg-surface/95 p-3.5 shadow-xl backdrop-blur dark:border-cream/15 dark:bg-surface-dark/95 sm:-right-6">
+          <div className="flex items-center gap-2">
+            <span className="grid h-8 w-8 place-items-center rounded-full bg-brand-500 text-ink">
+              <Brain size={15} />
+            </span>
+            <div>
+              <p className="text-[13px] font-bold text-ink dark:text-cream">Smart Study</p>
+              <p className="text-[11px] text-ink/50 dark:text-cream/50">9/12 answered</p>
+            </div>
+          </div>
+          <div className="mt-2 h-1.5 w-36 overflow-hidden rounded-full bg-ink/10 dark:bg-cream/15 sm:w-40">
+            <div className="h-full w-3/4 rounded-full bg-brand-500" />
+          </div>
+        </div>
+        <div className="absolute -bottom-5 left-6 animate-float rounded-2xl border border-ink/10 bg-surface/95 px-4 py-3 shadow-xl backdrop-blur dark:border-cream/15 dark:bg-surface-dark/95">
+          <p className="flex items-center gap-1.5 text-sm font-bold text-ink dark:text-cream">
+            <Flame size={15} className="text-amber-500" /> 7-day streak
+          </p>
+          <p className="text-[11px] font-medium text-ink/50 dark:text-cream/50">Spaced repetition is working ✨</p>
+        </div>
       </div>
     );
   }
