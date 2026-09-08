@@ -70,7 +70,7 @@ export function AppShell({ user, children }: { user: ShellUser; children: React.
   const signOut = async () => {
     await signoutAction();
     toast("Signed out. See you soon!");
-    router.push("/signin");
+    router.push("/");
     router.refresh();
   };
 

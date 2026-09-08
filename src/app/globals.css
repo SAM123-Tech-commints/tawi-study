@@ -88,6 +88,58 @@ body {
   font-family: var(--font-serif);
 }
 
+/* --------------------- Accent color themes --------------------- */
+/* Every brand-* utility resolves to these vars, so switching the
+ * data-accent attribute re-skins the whole UI instantly (both modes). */
+:root[data-accent="violet"] {
+  --color-brand-50: #f5f1ff;
+  --color-brand-100: #ede5ff;
+  --color-brand-200: #d9c8ff;
+  --color-brand-300: #bd9fff;
+  --color-brand-400: #a78bfa;
+  --color-brand-500: #9d6bff;
+  --color-brand-600: #7c5cfc;
+  --color-brand-700: #6440e8;
+  --color-brand-800: #4f31bd;
+  --color-brand-900: #3f2a8f;
+}
+:root[data-accent="sky"] {
+  --color-brand-50: #f0f9ff;
+  --color-brand-100: #e0f2fe;
+  --color-brand-200: #bae6fd;
+  --color-brand-300: #7dd3fc;
+  --color-brand-400: #38bdf8;
+  --color-brand-500: #22b8f5;
+  --color-brand-600: #0ea5e9;
+  --color-brand-700: #0284c7;
+  --color-brand-800: #0369a1;
+  --color-brand-900: #075985;
+}
+:root[data-accent="amber"] {
+  --color-brand-50: #fffbeb;
+  --color-brand-100: #fef3c7;
+  --color-brand-200: #fde68a;
+  --color-brand-300: #fcd34d;
+  --color-brand-400: #fbbf24;
+  --color-brand-500: #f5a31b;
+  --color-brand-600: #d97706;
+  --color-brand-700: #b45309;
+  --color-brand-800: #92400e;
+  --color-brand-900: #78350f;
+}
+:root[data-accent="rose"] {
+  --color-brand-50: #fff1f2;
+  --color-brand-100: #ffe4e6;
+  --color-brand-200: #fecdd3;
+  --color-brand-300: #fda4af;
+  --color-brand-400: #fb7185;
+  --color-brand-500: #f9627d;
+  --color-brand-600: #e11d48;
+  --color-brand-700: #be123c;
+  --color-brand-800: #9f1239;
+  --color-brand-900: #881337;
+}
+
 /* Flip card (flashcards) */
 .flip-scene {
   perspective: 1400px;

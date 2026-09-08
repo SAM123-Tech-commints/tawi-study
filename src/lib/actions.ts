@@ -376,6 +376,7 @@ export async function updateSettingsAction(settings: {
   theme?: string;
   language?: string;
   timerEnabled?: boolean;
+  accent?: string;
 }): Promise<{ ok: boolean; error?: string }> {
   return guard(async () => {
     const user = await getUser();
@@ -395,6 +396,7 @@ export async function getUserSettings(): Promise<{
   theme: string;
   language: string;
   timerEnabled: boolean;
+  accent: string;
 } | null> {
   return guardRead(async () => {
     const user = await getUser();
@@ -408,6 +410,7 @@ export async function getUserSettings(): Promise<{
       theme: (s.theme as string) ?? "system",
       language: (s.language as string) ?? "en",
       timerEnabled: (s.timerEnabled as boolean) ?? false,
+      accent: (s.accent as string) ?? "lime",
     };
   });
 }
@@ -614,6 +617,27 @@ export async function regenerateNotesAction(kitId: string): Promise<{ ok: boolea
     await db.update(kits).set({ notes, updatedAt: new Date() }).where(eq(kits.id, kit.id));
     revalidatePath(`/kits/${kit.id}`);
     return { ok: true };
+  });
+}
+
+/* Suggest highlight terms with the AI engine (uses your API key when one is
+ * configured, otherwise the built-in engine) — word AND its definition get
+ * highlighted in Exact text because matches apply to the whole passage. */
+export async function suggestGuideTermsAction(kitId: string): Promise<{ ok: boolean; error?: string; terms?: string[]; ai?: boolean }> {
+  return guard(async () => {
+    const user = await getUser();
+    if (!user) return { ok: false, error: authError() };
+    if (user.isGuest) return { ok: false, error: GUEST_MESSAGE };
+    const [kit] = await db
+      .select()
+      .from(kits)
+      .where(and(eq(kits.id, kitId), eq(kits.userId, user.id)))
+      .limit(1);
+    if (!kit) return { ok: false, error: "Study kit not found." };
+    const summary = await generateSummary(kit.content.slice(0, 60000));
+    const terms = (summary.keyTerms ?? []).map((k) => k.term).filter((t) => t && t.length > 2).slice(0, 12);
+    if (!terms.length) return { ok: false, error: "No clear terms found — add your own below." };
+    return { ok: true, terms, ai: aiAvailable() };
   });
 }
 

@@ -37,6 +37,7 @@ import {
   regenerateKitAction,
   regenerateNotesAction,
   resetProgressAction,
+  suggestGuideTermsAction,
 } from "@/lib/actions";
 import { formatInterval } from "@/lib/srs";
 import {
@@ -685,18 +686,32 @@ function StudyGuideTool({
   const [newTerm, setNewTerm] = useState("");
   const [showTerms, setShowTerms] = useState(false);
   const [focusOnly, setFocusOnly] = useState(false);
+  const [hlBusy, setHlBusy] = useState(false);
   useEffect(() => {
     setHighlights(summaryTerms);
   }, [kit.id, summaryTerms.join("|")]);
 
-  const refreshHighlights = () => {
-    const fresh = keyTerms(kit.content, 12).map((k) => k.term).filter(Boolean);
-    if (!fresh.length) {
-      toast("No clear terms found — add your own below.", "error");
-      return;
+  const refreshHighlights = async () => {
+    // AI first (uses your API key when configured): the word AND its
+    // definition light up because matches apply to the whole passage.
+    setHlBusy(true);
+    try {
+      const res = await suggestGuideTermsAction(kit.id);
+      if (res.ok && res.terms?.length) {
+        setHighlights(res.terms);
+        toast(`Highlights refreshed — ${res.terms.length} key terms ${res.ai ? "✨ (AI)" : "✨"}`);
+        return;
+      }
+      const fresh = keyTerms(kit.content, 12).map((k) => k.term).filter(Boolean);
+      if (!fresh.length) {
+        toast(res.error ?? "No clear terms found — add your own below.", "error");
+        return;
+      }
+      setHighlights(fresh);
+      toast(`Highlights refreshed — ${fresh.length} key terms ✨`);
+    } finally {
+      setHlBusy(false);
     }
-    setHighlights(fresh);
-    toast(`Highlights refreshed — ${fresh.length} key terms ✨`);
   };
 
   const cleanHighlights = () => {
@@ -832,8 +847,8 @@ function StudyGuideTool({
                 {showTerms ? "Hide" : "Edit"} highlight terms ({highlights.length})
               </button>
               <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" onClick={refreshHighlights}>
-                  <RefreshCw size={13} /> Refresh highlights
+                <Button variant="outline" size="sm" onClick={refreshHighlights} disabled={hlBusy}>
+                  {hlBusy ? <Spinner className="h-3.5 w-3.5" /> : <RefreshCw size={13} />} Refresh highlights
                 </Button>
                 <Button variant="outline" size="sm" onClick={cleanHighlights} disabled={!highlights.length}>
                   🧹 Clean up

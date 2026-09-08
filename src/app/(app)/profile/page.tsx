@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Camera, Check, Copy, KeyRound, LogOut, RefreshCw, Settings2, Trash2, User } from "lucide-react";
 import { Avatar, Button, Card, Field, Input, Spinner, useToast } from "@/components/ui";
+import { ACCENTS, applyAccent } from "@/components/theme";
 import {
   getApiKeyAction,
   getAvatarAction,
@@ -37,6 +38,7 @@ export default function ProfilePage() {
   const [timerLongBreak, setTimerLongBreak] = useState(15);
   const [timerRounds, setTimerRounds] = useState(4);
   const [theme, setTheme] = useState("system");
+  const [accent, setAccent] = useState("lime");
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -63,6 +65,8 @@ export default function ProfilePage() {
       setTimerLongBreak(settings.timerLongBreak);
       setTimerRounds(settings.timerRounds);
       setTheme(settings.theme);
+      setAccent(settings.accent ?? "lime");
+      applyAccent(settings.accent ?? "lime");
     }
     if (keyRes.ok) setApiKey(keyRes.key ?? null);
     setLoading(false);
@@ -124,6 +128,7 @@ export default function ProfilePage() {
       timerLongBreak,
       timerRounds,
       theme,
+      accent,
     });
     setSaving(false);
     if (res.ok) toast("Settings saved");
@@ -163,7 +168,7 @@ export default function ProfilePage() {
   const signOut = async () => {
     await signoutAction();
     toast("Signed out. See you soon!");
-    router.push("/signin");
+    router.push("/");
     router.refresh();
   };
 
@@ -310,17 +315,42 @@ export default function ProfilePage() {
         )}
         <Field label="Theme">
           <div className="flex gap-2">
-            {(["light", "dark", "system"] as const).map((t) => (
+            {([
+              ["light", "☀️ Light"],
+              ["dark", "🌙 Dark"],
+              ["system", "💻 System"],
+            ] as const).map(([t, label]) => (
               <button
                 key={t}
                 onClick={() => setTheme(t)}
-                className={`rounded-full px-4 py-2 text-sm font-bold transition ${
+                className={`rounded-full px-4 py-2 text-sm font-bold transition active:scale-95 ${
                   theme === t
                     ? "bg-brand-500 text-ink"
                     : "bg-ink/5 text-ink/60 hover:bg-ink/10 dark:bg-cream/10 dark:text-cream/60"
                 }`}
               >
-                {t === "light" ? "☀️ Light" : t === "dark" ? "🌙 Dark" : "💻 System"}
+                {label}
+              </button>
+            ))}
+          </div>
+        </Field>
+        <Field label="Accent color" hint="Recolors buttons, highlights, rings and badges across the whole app.">
+          <div className="flex gap-2.5">
+            {ACCENTS.map((a) => (
+              <button
+                key={a.id}
+                onClick={() => {
+                  setAccent(a.id);
+                  applyAccent(a.id);
+                }}
+                title={a.label}
+                aria-label={`${a.label} accent`}
+                className={`grid h-11 w-11 place-items-center rounded-full transition hover:scale-110 active:scale-90 ${
+                  accent === a.id ? "ring-2 ring-ink ring-offset-2 dark:ring-cream dark:ring-offset-surface-dark" : "ring-1 ring-ink/10 dark:ring-cream/15"
+                }`}
+                style={{ background: a.swatch }}
+              >
+                {accent === a.id && <Check size={16} className="text-ink" strokeWidth={3} />}
               </button>
             ))}
           </div>

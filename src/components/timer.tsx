@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Pause, Play, RotateCcw, Settings, Volume2, VolumeX } from "lucide-react";
+import { GripVertical, Minimize2, Pause, Play, RotateCcw, Settings, Square, Volume2, VolumeX, X } from "lucide-react";
 import { Button } from "@/components/ui";
 
 type TimerMode = "work" | "break" | "longBreak";
@@ -91,6 +91,12 @@ export function PomodoroTimer({
     setRound(1);
   };
 
+  const stop = () => {
+    // Stop = pause + refill the current session (mode and round are kept).
+    setRunning(false);
+    setSecondsLeft(totalSeconds);
+  };
+
   const mins = Math.floor(secondsLeft / 60);
   const secs = secondsLeft % 60;
   const modeLabel = mode === "work" ? "Focus" : mode === "break" ? "Break" : "Long Break";
@@ -146,28 +152,41 @@ export function PomodoroTimer({
         </div>
       </div>
 
-      {/* Controls */}
+      {/* Controls — big unmissable start/pause + explicit stop */}
       <div className="flex items-center gap-2">
         <Button
           variant="ghost"
           size="sm"
           onClick={reset}
           className="rounded-full"
+          title="Reset everything"
         >
           <RotateCcw size={16} />
         </Button>
         <Button
-          onClick={() => setRunning(!running)}
-          className="h-12 w-12 rounded-full"
-          size="lg"
+          variant="ghost"
+          size="sm"
+          onClick={stop}
+          className="rounded-full"
+          title="Stop (pause + refill this session)"
         >
-          {running ? <Pause size={20} /> : <Play size={20} className="ml-0.5" />}
+          <Square size={15} fill="currentColor" />
+        </Button>
+        <Button
+          onClick={() => setRunning(!running)}
+          className="h-14 min-w-14 rounded-full px-5"
+          size="lg"
+          title={running ? "Pause" : "Start"}
+        >
+          {running ? <Pause size={22} fill="currentColor" /> : <Play size={22} fill="currentColor" className="ml-0.5" />}
+          <span className="text-sm font-extrabold">{running ? "Pause" : "Start"}</span>
         </Button>
         <Button
           variant="ghost"
           size="sm"
           onClick={() => setMuted(!muted)}
           className="rounded-full"
+          title={muted ? "Unmute" : "Mute"}
         >
           {muted ? <VolumeX size={16} /> : <Volume2 size={16} />}
         </Button>
@@ -177,6 +196,7 @@ export function PomodoroTimer({
             size="sm"
             onClick={onSettingsClick}
             className="rounded-full"
+            title="Timer settings"
           >
             <Settings size={16} />
           </Button>
@@ -187,6 +207,98 @@ export function PomodoroTimer({
       <p className="text-[12px] font-medium text-ink/45 dark:text-cream/45">
         Round {round} / {settings.rounds}
       </p>
+    </div>
+  );
+}
+
+/* ------------------------- Floating popup ------------------------- */
+/* Draggable by its header, minimizable to a pill, closable. The dashboard
+ * re-opens it through its own "Focus timer" pill. */
+
+export function TimerPopup({
+  settings,
+  onSettingsClick,
+  onClose,
+}: {
+  settings: TimerSettings;
+  onSettingsClick?: () => void;
+  onClose: () => void;
+}) {
+  const [min, setMin] = useState(false);
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const drag = useRef<{ dx: number; dy: number } | null>(null);
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (pos === null) {
+      // Convert the docked corner into absolute coordinates, then drag.
+      const el = (e.currentTarget as HTMLElement).closest("[data-timer-popup]") as HTMLElement | null;
+      const r = el?.getBoundingClientRect();
+      if (!r) return;
+      drag.current = { dx: e.clientX - r.left, dy: e.clientY - r.top };
+      setPos({ x: r.left, y: r.top });
+    } else {
+      drag.current = { dx: e.clientX - pos.x, dy: e.clientY - pos.y };
+    }
+    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+  };
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (!drag.current) return;
+    setPos({
+      x: Math.min(Math.max(8, e.clientX - drag.current.dx), window.innerWidth - 120),
+      y: Math.min(Math.max(8, e.clientY - drag.current.dy), window.innerHeight - 80),
+    });
+  };
+  const onPointerUp = () => {
+    drag.current = null;
+  };
+
+  return (
+    <div
+      data-timer-popup
+      className="fixed z-40 no-print"
+      style={pos ? { left: pos.x, top: pos.y } : { right: 20, bottom: 20 }}
+    >
+      {min ? (
+        <button
+          onClick={() => setMin(false)}
+          className="flex items-center gap-2 rounded-full border border-ink/10 bg-surface px-4 py-2.5 text-sm font-bold text-ink shadow-xl transition hover:scale-105 active:scale-95 dark:border-cream/15 dark:bg-surface-dark dark:text-cream"
+        >
+          <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-brand-500" /> Focus timer — expand
+        </button>
+      ) : (
+        <div className="w-[300px] rounded-3xl border border-ink/10 bg-surface p-4 shadow-2xl dark:border-cream/15 dark:bg-surface-dark">
+          <div
+            className="mb-1 flex cursor-grab touch-none items-center justify-between active:cursor-grabbing"
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            title="Hold and drag me anywhere"
+          >
+            <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-ink/40 dark:text-cream/40">
+              <GripVertical size={13} /> Drag me
+            </span>
+            <span className="flex items-center gap-0.5">
+              <button
+                onClick={() => setMin(true)}
+                className="rounded-full p-1.5 text-ink/45 transition hover:bg-ink/5 active:scale-90 dark:text-cream/45 dark:hover:bg-cream/10"
+                aria-label="Minimize timer"
+                title="Minimize"
+              >
+                <Minimize2 size={14} />
+              </button>
+              <button
+                onClick={onClose}
+                className="rounded-full p-1.5 text-ink/45 transition hover:bg-ink/5 active:scale-90 dark:text-cream/45 dark:hover:bg-cream/10"
+                aria-label="Close timer"
+                title="Close (reopen with the Focus timer pill)"
+              >
+                <X size={15} />
+              </button>
+            </span>
+          </div>
+          <PomodoroTimer settings={settings} onSettingsClick={onSettingsClick} />
+        </div>
+      )}
     </div>
   );
 }

@@ -41,7 +41,7 @@ import {
   Spinner,
   useToast,
 } from "@/components/ui";
-import { PomodoroTimer } from "@/components/timer";
+import { TimerPopup } from "@/components/timer";
 import { getUserSettings } from "@/lib/actions";
 
 type DashData = NonNullable<Awaited<ReturnType<typeof getDashboardData>>>;
@@ -206,28 +206,18 @@ function DashboardInner() {
         </p>
       </section>
 
-      {/* Study Timer — floating popup, only when enabled in Profile → Settings */}
+      {/* Study Timer — draggable popup, only when enabled in Profile → Settings */}
       {timerOn && timerOpen && (
-        <div className="fixed bottom-5 right-5 z-40 w-[300px] no-print">
-          <Card className="relative p-5 shadow-2xl">
-            <button
-              onClick={() => setTimerOpen(false)}
-              className="absolute right-3 top-3 rounded-full p-1 text-ink/40 hover:bg-ink/5 dark:text-cream/40"
-              aria-label="Hide timer"
-            >
-              ✕
-            </button>
-            <PomodoroTimer
-              settings={timerSettings}
-              onSettingsClick={() => router.push("/profile")}
-            />
-          </Card>
-        </div>
+        <TimerPopup
+          settings={timerSettings}
+          onSettingsClick={() => router.push("/profile")}
+          onClose={() => setTimerOpen(false)}
+        />
       )}
       {timerOn && !timerOpen && (
         <button
           onClick={() => setTimerOpen(true)}
-          className="fixed bottom-5 right-5 z-40 rounded-full bg-ink px-4 py-2.5 text-sm font-bold text-brand-300 shadow-xl no-print dark:bg-brand-500 dark:text-ink"
+          className="fixed bottom-5 right-5 z-40 rounded-full bg-ink px-4 py-2.5 text-sm font-bold text-brand-300 shadow-xl transition hover:scale-105 active:scale-95 no-print dark:bg-brand-500 dark:text-ink"
         >
           ⏱ Focus timer
         </button>
