@@ -242,6 +242,7 @@ export async function updateSettingsAction(settings: {
   timerRounds?: number;
   theme?: string;
   language?: string;
+  timerEnabled?: boolean;
 }): Promise<{ ok: boolean; error?: string }> {
   return guard(async () => {
     const user = await getUser();
@@ -260,6 +261,7 @@ export async function getUserSettings(): Promise<{
   timerRounds: number;
   theme: string;
   language: string;
+  timerEnabled: boolean;
 } | null> {
   return guardRead(async () => {
     const user = await getUser();
@@ -272,6 +274,7 @@ export async function getUserSettings(): Promise<{
       timerRounds: (s.timerRounds as number) ?? 4,
       theme: (s.theme as string) ?? "system",
       language: (s.language as string) ?? "en",
+      timerEnabled: (s.timerEnabled as boolean) ?? false,
     };
   });
 }
