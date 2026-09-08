@@ -474,7 +474,13 @@ function applyHighlights(text: string, key: string, highlights?: string[]): Reac
 }
 
 export function RichText({ text, className, highlights }: { text: string; className?: string; highlights?: string[] }) {
-  const lines = text.split("\n");
+  const normalized = text
+    .replace(/\r\n/g, "\n")
+    .replace(/(?<=[a-z0-9])(?=[A-Z])/g, "\n")
+    .replace(/(?<=\.)(?=\s+[A-Z])/g, "\n")
+    .replace(/(?<=\!|\?)(?=\s+[A-Z])/g, "\n")
+    .replace(/(?<=\d)(?=\.\s)/g, "\n");
+  const lines = normalized.split("\n");
   const blocks: ReactNode[] = [];
   let para: string[] = [];
   let counter = 0;
@@ -607,4 +613,205 @@ export function formatDue(iso: string): string {
   const d = new Date(`${iso}T23:59:59`);
   if (isNaN(d.getTime())) return iso;
   return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+}
+
+/* =========================== RICH TEXT EDITOR =========================== */
+
+function ToolbarBtn({
+  active,
+  onClick,
+  title,
+  children,
+}: {
+  active?: boolean;
+  onClick: () => void;
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      onClick={onClick}
+      className={cn(
+        "flex h-8 w-8 items-center justify-center rounded-lg text-[13px] font-bold transition",
+        active
+          ? "bg-brand-500/15 text-brand-700 dark:bg-brand-500/25 dark:text-brand-300"
+          : "text-ink/55 hover:bg-ink/8 hover:text-ink dark:text-cream/55 dark:hover:bg-cream/10 dark:hover:text-cream"
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+function ToolbarSep() {
+  return <span className="mx-0.5 h-5 w-px bg-ink/10 dark:bg-cream/15" />;
+}
+
+export function RichEditor({
+  value,
+  onChange,
+  placeholder,
+  minHeight = 300,
+}: {
+  value: string;
+  onChange: (html: string) => void;
+  placeholder?: string;
+  minHeight?: number;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [active, setActive] = useState<Record<string, boolean>>({});
+
+  const syncActive = useCallback(() => {
+    const a: Record<string, boolean> = {};
+    a.bold = document.queryCommandState("bold");
+    a.italic = document.queryCommandState("italic");
+    a.underline = document.queryCommandState("underline");
+    a.strikeThrough = document.queryCommandState("strikeThrough");
+    a.insertUnorderedList = document.queryCommandState("insertUnorderedList");
+    a.insertOrderedList = document.queryCommandState("insertOrderedList");
+    setActive(a);
+  }, []);
+
+  const exec = useCallback(
+    (cmd: string, val?: string) => {
+      document.execCommand(cmd, false, val);
+      ref.current?.focus();
+      syncActive();
+      onChange(ref.current?.innerHTML ?? "");
+    },
+    [onChange, syncActive]
+  );
+
+  const handleInput = useCallback(() => {
+    onChange(ref.current?.innerHTML ?? "");
+  }, [onChange]);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey) {
+        switch (e.key.toLowerCase()) {
+          case "b":
+            e.preventDefault();
+            exec("bold");
+            break;
+          case "i":
+            e.preventDefault();
+            exec("italic");
+            break;
+          case "u":
+            e.preventDefault();
+            exec("underline");
+            break;
+        }
+      }
+    },
+    [exec]
+  );
+
+  const insertLink = useCallback(() => {
+    const url = prompt("Enter URL:");
+    if (url) exec("createLink", url);
+  }, [exec]);
+
+  const setColor = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      exec("foreColor", e.target.value);
+    },
+    [exec]
+  );
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-ink/10 dark:border-cream/15">
+      {/* Toolbar */}
+      <div className="flex flex-wrap items-center gap-0.5 border-b border-ink/10 bg-ink/[0.03] px-2 py-1.5 dark:border-cream/10 dark:bg-cream/[0.03]">
+        <ToolbarBtn active={active.bold} onClick={() => exec("bold")} title="Bold (Ctrl+B)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/><path d="M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/></svg>
+        </ToolbarBtn>
+        <ToolbarBtn active={active.italic} onClick={() => exec("italic")} title="Italic (Ctrl+I)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="4" x2="10" y2="4"/><line x1="14" y1="20" x2="5" y2="20"/><line x1="15" y1="4" x2="9" y2="20"/></svg>
+        </ToolbarBtn>
+        <ToolbarBtn active={active.underline} onClick={() => exec("underline")} title="Underline (Ctrl+U)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 3v7a6 6 0 0 0 6 6 6 6 0 0 0 6-6V3"/><line x1="4" y1="21" x2="20" y2="21"/></svg>
+        </ToolbarBtn>
+        <ToolbarBtn active={active.strikeThrough} onClick={() => exec("strikeThrough")} title="Strikethrough">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4H9a3 3 0 0 0-3 3c0 2 1 3 3 3"/><line x1="4" y1="12" x2="20" y2="12"/><path d="M15 12c2 0 3 1 3 3a3 3 0 0 1-3 3H8"/></svg>
+        </ToolbarBtn>
+
+        <ToolbarSep />
+
+        <ToolbarBtn onClick={() => exec("formatBlock", "H1")} title="Heading 1">
+          <span className="text-xs font-extrabold">H1</span>
+        </ToolbarBtn>
+        <ToolbarBtn onClick={() => exec("formatBlock", "H2")} title="Heading 2">
+          <span className="text-xs font-extrabold">H2</span>
+        </ToolbarBtn>
+        <ToolbarBtn onClick={() => exec("formatBlock", "H3")} title="Heading 3">
+          <span className="text-[11px] font-extrabold">H3</span>
+        </ToolbarBtn>
+        <ToolbarBtn onClick={() => exec("formatBlock", "P")} title="Paragraph">
+          <span className="text-xs">¶</span>
+        </ToolbarBtn>
+
+        <ToolbarSep />
+
+        <ToolbarBtn active={active.insertUnorderedList} onClick={() => exec("insertUnorderedList")} title="Bullet list">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><circle cx="4" cy="6" r="1.5" fill="currentColor"/><circle cx="4" cy="12" r="1.5" fill="currentColor"/><circle cx="4" cy="18" r="1.5" fill="currentColor"/></svg>
+        </ToolbarBtn>
+        <ToolbarBtn active={active.insertOrderedList} onClick={() => exec("insertOrderedList")} title="Numbered list">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><text x="3" y="8" fill="currentColor" stroke="none" fontSize="8" fontWeight="bold">1</text><text x="3" y="14" fill="currentColor" stroke="none" fontSize="8" fontWeight="bold">2</text><text x="3" y="20" fill="currentColor" stroke="none" fontSize="8" fontWeight="bold">3</text></svg>
+        </ToolbarBtn>
+
+        <ToolbarSep />
+
+        <ToolbarBtn onClick={() => exec("indent")} title="Indent">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="11" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/><polyline points="7 10 3 12 7 14"/></svg>
+        </ToolbarBtn>
+        <ToolbarBtn onClick={() => exec("outdent")} title="Outdent">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="11" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/><polyline points="3 10 7 12 3 14"/></svg>
+        </ToolbarBtn>
+
+        <ToolbarSep />
+
+        <ToolbarBtn onClick={insertLink} title="Insert link">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+        </ToolbarBtn>
+
+        <ToolbarSep />
+
+        <label className="flex h-8 items-center gap-1 rounded-lg px-1.5 text-ink/55 transition hover:bg-ink/8 hover:text-ink dark:text-cream/55 dark:hover:bg-cream/10 dark:hover:text-cream" title="Text color">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 20h16"/><path d="M9.354 4H14.646L19 16h-2.5l-1.2-3H8.7l-1.2 3H5L9.354 4z"/></svg>
+          <input type="color" className="h-4 w-4 cursor-pointer border-0 bg-transparent p-0" onChange={setColor} defaultValue="#000000" />
+        </label>
+
+        <ToolbarSep />
+
+        <ToolbarBtn onClick={() => exec("removeFormat")} title="Clear formatting">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="4" x2="20" y2="20"/><path d="M6 12l4-4 4 4 4-4"/></svg>
+        </ToolbarBtn>
+        <ToolbarBtn onClick={() => exec("undo")} title="Undo">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+        </ToolbarBtn>
+        <ToolbarBtn onClick={() => exec("redo")} title="Redo">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.13-9.36L23 10"/></svg>
+        </ToolbarBtn>
+      </div>
+
+      {/* Editor area */}
+      <div
+        ref={ref}
+        contentEditable
+        suppressContentEditableWarning
+        onInput={handleInput}
+        onMouseUp={syncActive}
+        onKeyUp={syncActive}
+        onKeyDown={handleKeyDown}
+        data-placeholder={placeholder ?? "Start writing..."}
+        className="min-h-[300px] bg-white px-5 py-4 text-[15px] leading-relaxed text-ink/85 outline-none empty:before:text-ink/30 dark:bg-surface-dark dark:text-cream/85 dark:before:text-cream/30 [&:empty]:before:content-[attr(data-placeholder)] [&_h1]:text-xl [&_h1]:font-bold [&_h1]:text-ink [&_h1]:dark:text-cream [&_h2]:text-lg [&_h2]:font-bold [&_h2]:text-ink [&_h2]:dark:text-cream [&_h3]:text-[15px] [&_h3]:font-bold [&_h3]:text-ink [&_h3]:dark:text-cream [&_li]:ml-4 [&_li]:list-disc [&_li]:pl-1 [&_ol]:ml-4 [&_ol]:list-decimal [&_p]:mb-2 [&_ul]:ml-4 [&_ul]:list-disc"
+        style={{ minHeight }}
+        dangerouslySetInnerHTML={{ __html: value }}
+      />
+    </div>
+  );
 }

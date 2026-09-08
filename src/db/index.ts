@@ -217,14 +217,7 @@ function createPool(): Pool {
     max: Number(process.env.DB_POOL_MAX ?? 5),
     idleTimeoutMillis: 10_000,
     connectionTimeoutMillis: 15_000,
-    // Neon's pooler does not support prepared-statement protocol.
-    // Use simple-protocol queries to avoid "prepared statement does not exist" errors.
     application_name: "tawi-study",
-  });
-
-  // Disable prepared statements at the connection level (PgBouncer / Neon pooler).
-  pool.on("connect", (client: PoolClient) => {
-    client.query("SET prepare = off").catch(() => {});
   });
 
   // Never let an idle-client error crash the server process.
@@ -240,12 +233,14 @@ function createPool(): Pool {
     g.__tiaReady ??= (async () => {
       try {
         for (const stmt of BOOTSTRAP_STATEMENTS) {
-          await (rawQuery as (sql: string) => Promise<QueryResult>)(stmt);
+          await Promise.race([
+            (rawQuery as (sql: string) => Promise<QueryResult>)(stmt),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error("DDL timeout")), 8000)
+            ),
+          ]);
         }
       } catch (err) {
-        // A parallel invocation may win the race; that's harmless. Anything
-        // else is logged but not fatal, so a DB with tables already in place
-        // (or a restricted role) still serves traffic.
         console.warn(
           "[db] schema bootstrap skipped:",
           err instanceof Error ? err.message : err
@@ -255,9 +250,12 @@ function createPool(): Pool {
     return g.__tiaReady;
   };
 
+  // Run bootstrap in the background — don't block normal queries.
+  // If bootstrap fails, the /api/migrate endpoint handles it.
+  ensureReady().catch(() => {});
+
   type AnyArgs = Parameters<RawQuery>;
   pool.query = (async (...args: AnyArgs) => {
-    await ensureReady();
     return (rawQuery as (...a: AnyArgs) => Promise<QueryResult>)(...args);
   }) as unknown as typeof pool.query;
 

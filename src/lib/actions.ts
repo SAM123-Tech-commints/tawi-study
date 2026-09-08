@@ -96,7 +96,12 @@ function memberBlocked(user: { isGuest: boolean } | null): string | null {
 async function guardRead<T>(fn: () => Promise<T>): Promise<T | null> {
   if (!isDatabaseConfigured()) return null;
   try {
-    return await fn();
+    return await Promise.race([
+      fn(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Read timed out")), 10000)
+      ),
+    ]);
   } catch (err) {
     console.error("[query] failed:", err);
     return null;
@@ -115,7 +120,12 @@ async function guard<T extends { ok: boolean; error?: string }>(
     return { ...(fallback ?? {}), ok: false, error: NO_DB_MESSAGE } as T;
   }
   try {
-    return await fn();
+    return await Promise.race([
+      fn(),
+      new Promise<T>((_, reject) =>
+        setTimeout(() => reject(new Error("Request timed out. The database may be unreachable — please try again.")), 15000)
+      ),
+    ]);
   } catch (err) {
     console.error("[action] failed:", err);
     return { ...(fallback ?? {}), ok: false, error: dbErrorMessage(err) } as T;

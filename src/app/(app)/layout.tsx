@@ -15,7 +15,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         isAdmin: isAdminUser(user),
       }}
     >
-      {children}
+      <div className="page-enter">{children}</div>
     </AppShell>
   );
 }

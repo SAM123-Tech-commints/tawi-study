@@ -27,8 +27,8 @@ import {
   EmptyState,
   Field,
   Input,
+  RichEditor,
   Spinner,
-  Textarea,
   useToast,
 } from "@/components/ui";
 
@@ -339,16 +339,15 @@ function DocsTab({ data, kind, onRefresh }: { data: WorkspaceData; kind: string;
             />
           </Field>
           <Field label={kind === "note" ? "Note content" : "Document body"}>
-            <Textarea
-              rows={18}
+            <RichEditor
               value={content}
-              onChange={(e) => setContent(e.target.value)}
+              onChange={setContent}
               placeholder={
                 kind === "note"
-                  ? "Write your notes here — supports bold (**like this**) and bullet points."
-                  : "Write your document here — supports full markdown."
+                  ? "Write your notes here — use the toolbar for formatting."
+                  : "Write your document here — full formatting available."
               }
-              className="min-h-[300px] font-mono text-[14px] leading-relaxed"
+              minHeight={350}
             />
           </Field>
           <div className="flex items-center justify-between">

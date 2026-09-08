@@ -63,7 +63,7 @@ function Hero() {
     <section className="relative overflow-hidden">
       <div className="pointer-events-none absolute -top-32 left-1/2 h-96 w-[52rem] -translate-x-1/2 rounded-full bg-brand-200/40 blur-3xl dark:bg-brand-500/10" />
       <div className="relative mx-auto grid max-w-6xl items-center gap-10 px-4 py-16 sm:px-6 lg:grid-cols-2 lg:py-24">
-        <div>
+        <div className="animate-in-left">
           <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-ink/10 bg-surface px-3.5 py-1.5 text-[13px] font-semibold text-ink/80 shadow-sm dark:border-cream/10 dark:bg-surface-dark dark:text-cream/80">
             <Trophy size={14} className="text-brand-600 dark:text-brand-400" />
             #3 best AI tool of 2025 · Trusted by millions of students
@@ -491,7 +491,7 @@ function HowItWorks() {
           Create free study tools from over 90 file types.
         </h2>
       </div>
-      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4 stagger-children">
         {steps.map(([Icon, emoji, tag, title, desc], i) => (
           <div key={tag} className="relative rounded-3xl border border-ink/8 bg-surface p-6 shadow-sm dark:border-cream/10 dark:bg-surface-dark">
             <span className="absolute right-5 top-5 text-[11px] font-bold uppercase tracking-wider text-ink/35 dark:text-cream/35">
