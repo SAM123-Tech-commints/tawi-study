@@ -282,30 +282,35 @@ export function TimerPopup({
 }) {
   const [min, setMin] = useState(false);
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
-  const drag = useRef<{ dx: number; dy: number } | null>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
+
+  const clampPos = (x: number, y: number) => ({
+    x: Math.min(Math.max(8, x), Math.max(8, window.innerWidth - 316)),
+    y: Math.min(Math.max(8, y), Math.max(8, window.innerHeight - 220)),
+  });
 
   const onPointerDown = (e: React.PointerEvent) => {
-    if (pos === null) {
-      // Convert the docked corner into absolute coordinates, then drag.
-      const el = (e.currentTarget as HTMLElement).closest("[data-timer-popup]") as HTMLElement | null;
-      const r = el?.getBoundingClientRect();
-      if (!r) return;
-      drag.current = { dx: e.clientX - r.left, dy: e.clientY - r.top };
-      setPos({ x: r.left, y: r.top });
-    } else {
-      drag.current = { dx: e.clientX - pos.x, dy: e.clientY - pos.y };
-    }
-    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
-  };
-  const onPointerMove = (e: React.PointerEvent) => {
-    if (!drag.current) return;
-    setPos({
-      x: Math.min(Math.max(8, e.clientX - drag.current.dx), window.innerWidth - 120),
-      y: Math.min(Math.max(8, e.clientY - drag.current.dy), window.innerHeight - 80),
-    });
-  };
-  const onPointerUp = () => {
-    drag.current = null;
+    // Never start a drag from the minimize/close buttons — let them click.
+    if ((e.target as HTMLElement).closest("button")) return;
+    e.preventDefault();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const r = boxRef.current?.getBoundingClientRect();
+    // Anchor to where the popup actually is (docked corner or free position).
+    const baseX = pos?.x ?? r?.left ?? window.innerWidth - 320;
+    const baseY = pos?.y ?? r?.top ?? window.innerHeight - 320;
+    const move = (ev: PointerEvent) => {
+      setPos(clampPos(baseX + ev.clientX - startX, baseY + ev.clientY - startY));
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointercancel", up);
+    };
+    // Window-level tracking: fast moves outside the header keep working,
+    // on mouse and touch alike.
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up, { once: true });
+    window.addEventListener("pointercancel", up, { once: true });
   };
 
   return (
@@ -322,12 +327,13 @@ export function TimerPopup({
           <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-brand-500" /> Focus timer — expand
         </button>
       ) : (
-        <div className="w-[300px] rounded-3xl border border-ink/10 bg-surface p-4 shadow-2xl dark:border-cream/15 dark:bg-surface-dark">
+        <div
+          ref={boxRef}
+          className="w-[300px] rounded-3xl border border-ink/10 bg-surface p-4 shadow-2xl dark:border-cream/15 dark:bg-surface-dark"
+        >
           <div
             className="mb-1 flex cursor-grab touch-none items-center justify-between active:cursor-grabbing"
             onPointerDown={onPointerDown}
-            onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp}
             title="Hold and drag me anywhere"
           >
             <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-ink/40 dark:text-cream/40">
