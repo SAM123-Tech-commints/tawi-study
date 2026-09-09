@@ -156,8 +156,10 @@ export function PomodoroTimer({
   const mins = Math.floor(secondsLeft / 60);
   const secs = secondsLeft % 60;
   const modeLabel = mode === "work" ? "Focus" : mode === "break" ? "Break" : "Long Break";
-  const modeColor = mode === "work" ? "text-brand-600 dark:text-brand-400" : mode === "break" ? "text-green-600 dark:text-green-400" : "text-violet-600 dark:text-violet-400";
-  const ringColor = mode === "work" ? "stroke-[#B7E938]" : mode === "break" ? "stroke-green-500" : "stroke-violet-500";
+  // All timer colors ride the UI accent (Profile → Accent color): ring,
+  // label and buttons recolor with the theme in both modes.
+  const modeColor = "text-brand-700 dark:text-brand-300";
+  const ringColor = mode === "work" ? "stroke-brand-500" : mode === "break" ? "stroke-brand-300" : "stroke-brand-700";
 
   return (
     <div className="flex flex-col items-center gap-3">
@@ -345,67 +347,65 @@ export function TimerPopup({
     y: Math.min(Math.max(8, y), Math.max(8, window.innerHeight - 220)),
   });
 
-  // Mini pill: silent drag (no label). A press that barely moves counts as a
-  // tap and is left for the buttons; anything beyond 8px becomes a drag.
-  const onMiniDown = (e: React.PointerEvent) => {
+  // Professional drag, shared by the full card and the mini pill:
+  // 1:1 tracking while held (no transition lag), smooth glide for every
+  // programmatic move, and double-click glides back to the default dock.
+  const [dragging, setDragging] = useState(false);
+
+  const beginDrag = (e: React.PointerEvent) => {
+    // Never start a drag from a button — let buttons click.
     if ((e.target as HTMLElement).closest("button")) return;
     e.preventDefault();
     const startX = e.clientX;
     const startY = e.clientY;
     const host = (e.currentTarget as HTMLElement).closest("[data-timer-popup]") as HTMLElement | null;
     const r = host?.getBoundingClientRect();
-    const baseX = pos?.x ?? r?.left ?? window.innerWidth - 320;
-    const baseY = pos?.y ?? r?.top ?? window.innerHeight - 200;
-    let dragged = false;
-    const move = (ev: PointerEvent) => {
-      if (!dragged && Math.hypot(ev.clientX - startX, ev.clientY - startY) < 8) return;
-      dragged = true;
-      setPos(clampPos(baseX + ev.clientX - startX, baseY + ev.clientY - startY));
-    };
-    const up = () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointercancel", up);
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up, { once: true });
-    window.addEventListener("pointercancel", up, { once: true });
-  };
-
-  const onPointerDown = (e: React.PointerEvent) => {
-    // Never start a drag from the minimize/close buttons — let them click.
-    if ((e.target as HTMLElement).closest("button")) return;
-    e.preventDefault();
-    const startX = e.clientX;
-    const startY = e.clientY;
-    const r = boxRef.current?.getBoundingClientRect();
     // Anchor to where the popup actually is (docked corner or free position).
     const baseX = pos?.x ?? r?.left ?? window.innerWidth - 320;
-    const baseY = pos?.y ?? r?.top ?? window.innerHeight - 320;
+    const baseY = pos?.y ?? r?.top ?? window.innerHeight - 200;
+    let moved = false;
     const move = (ev: PointerEvent) => {
+      if (!moved) {
+        if (Math.hypot(ev.clientX - startX, ev.clientY - startY) < 6) return;
+        moved = true;
+        setDragging(true);
+      }
       setPos(clampPos(baseX + ev.clientX - startX, baseY + ev.clientY - startY));
     };
     const up = () => {
+      setDragging(false);
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointercancel", up);
     };
-    // Window-level tracking: fast moves outside the header keep working,
+    // Window-level tracking: fast moves outside the popup keep working,
     // on mouse and touch alike.
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up, { once: true });
     window.addEventListener("pointercancel", up, { once: true });
   };
 
+  const snapBack = () => setPos(null);
+
   return (
     <div
       data-timer-popup
       className="fixed z-40 no-print"
-      style={pos ? { left: pos.x, top: pos.y } : { right: 20, bottom: 20 }}
+      style={
+        pos
+          ? {
+              left: pos.x,
+              top: pos.y,
+              transition: dragging ? "none" : "left 0.35s cubic-bezier(0.22, 1, 0.36, 1), top 0.35s cubic-bezier(0.22, 1, 0.36, 1)",
+            }
+          : { right: 20, bottom: 20 }
+      }
     >
       {min ? (
         <div
           className="flex cursor-grab touch-none items-center gap-1 rounded-full border border-ink/10 bg-surface py-1.5 pl-4 pr-1.5 shadow-xl active:cursor-grabbing dark:border-cream/15 dark:bg-surface-dark"
-          onPointerDown={onMiniDown}
-          title="Drag to move · tap ▶ to expand"
+          onPointerDown={beginDrag}
+          onDoubleClick={snapBack}
+          title="Drag to move · double-click to dock bottom-right · tap ▶ to expand"
         >
           <MiniClock />
           <button
@@ -432,8 +432,9 @@ export function TimerPopup({
         >
           <div
             className="mb-1 flex cursor-grab touch-none items-center justify-between active:cursor-grabbing"
-            onPointerDown={onPointerDown}
-            title="Hold and drag me anywhere"
+            onPointerDown={beginDrag}
+            onDoubleClick={snapBack}
+            title="Hold and drag me anywhere · double-click to dock bottom-right"
           >
             <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-ink/40 dark:text-cream/40">
               <GripVertical size={13} /> Drag me
