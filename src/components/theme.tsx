@@ -142,37 +142,37 @@ export function ThemeToggle({ className }: { className?: string }) {
   const { dark, toggle } = useTheme();
 
   const handleToggle = (e: React.MouseEvent<HTMLButtonElement>) => {
-    const btn = e.currentTarget;
-    const rect = btn.getBoundingClientRect();
-    const x = rect.left + rect.width / 2;
-    const y = rect.top + rect.height / 2;
-    const maxDim = Math.max(window.innerWidth, window.innerHeight) * 2.5;
+    // Light → Dark: circle expands from upper-right
+    // Dark → Light: circle expands from upper-left
+    const goingDark = !dark;
+    const originX = goingDark ? window.innerWidth : 0;
+    const originY = 0;
+    const maxDim = Math.hypot(window.innerWidth, window.innerHeight) * 1.5;
 
-    // Create the circle overlay
     const overlay = document.createElement("div");
     overlay.style.cssText = `
-      position: fixed; inset: 0; z-index: 9999; pointer-events: none;
-      background: ${dark ? "#fafaf9" : "#1c1917"};
-      clip-path: circle(0% at ${x}px ${y}px);
-      transition: clip-path 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+      position: fixed; inset: 0; z-index: 1; pointer-events: none;
+      background: ${goingDark ? "#1c1917" : "#fafaf9"};
+      clip-path: circle(0% at ${originX}px ${originY}px);
+      transition: clip-path 0.6s cubic-bezier(0.4, 0, 0.2, 1);
     `;
     document.body.appendChild(overlay);
 
     // Force reflow then animate
     overlay.getBoundingClientRect();
     requestAnimationFrame(() => {
-      overlay.style.clipPath = `circle(${maxDim}px at ${x}px ${y}px)`;
+      overlay.style.clipPath = `circle(${maxDim}px at ${originX}px ${originY}px)`;
     });
 
     // Flip theme mid-animation
-    setTimeout(() => toggle(), 200);
+    setTimeout(() => toggle(), 250);
 
-    // Clean up
+    // Clean up after animation
     setTimeout(() => {
-      overlay.style.transition = "opacity 0.15s";
+      overlay.style.transition = "opacity 0.2s";
       overlay.style.opacity = "0";
-      setTimeout(() => overlay.remove(), 200);
-    }, 500);
+      setTimeout(() => overlay.remove(), 250);
+    }, 600);
   };
 
   return (
