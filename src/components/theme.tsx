@@ -148,13 +148,14 @@ export function ThemeToggle({ className }: { className?: string }) {
     const originX = goingDark ? window.innerWidth : 0;
     const originY = 0;
     const maxDim = Math.hypot(window.innerWidth, window.innerHeight) * 1.5;
+    const bgColor = goingDark ? "var(--color-paper-dark)" : "var(--color-paper)";
 
     const overlay = document.createElement("div");
     overlay.style.cssText = `
       position: fixed; inset: 0; z-index: 1; pointer-events: none;
-      background: ${goingDark ? "#1c1917" : "#fafaf9"};
+      background: ${bgColor};
       clip-path: circle(0% at ${originX}px ${originY}px);
-      transition: clip-path 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+      transition: clip-path 0.55s cubic-bezier(0.65, 0, 0.35, 1);
     `;
     document.body.appendChild(overlay);
 
@@ -164,15 +165,15 @@ export function ThemeToggle({ className }: { className?: string }) {
       overlay.style.clipPath = `circle(${maxDim}px at ${originX}px ${originY}px)`;
     });
 
-    // Flip theme mid-animation
-    setTimeout(() => toggle(), 250);
+    // Flip theme at the peak of the circle expansion
+    setTimeout(() => toggle(), 220);
 
-    // Clean up after animation
+    // Clean up smoothly
     setTimeout(() => {
-      overlay.style.transition = "opacity 0.2s";
+      overlay.style.transition = "opacity 0.3s ease-out";
       overlay.style.opacity = "0";
-      setTimeout(() => overlay.remove(), 250);
-    }, 600);
+      setTimeout(() => overlay.remove(), 300);
+    }, 550);
   };
 
   return (
