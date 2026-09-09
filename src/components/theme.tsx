@@ -140,9 +140,44 @@ export function useTheme() {
 
 export function ThemeToggle({ className }: { className?: string }) {
   const { dark, toggle } = useTheme();
+
+  const handleToggle = (e: React.MouseEvent<HTMLButtonElement>) => {
+    const btn = e.currentTarget;
+    const rect = btn.getBoundingClientRect();
+    const x = rect.left + rect.width / 2;
+    const y = rect.top + rect.height / 2;
+    const maxDim = Math.max(window.innerWidth, window.innerHeight) * 2.5;
+
+    // Create the circle overlay
+    const overlay = document.createElement("div");
+    overlay.style.cssText = `
+      position: fixed; inset: 0; z-index: 9999; pointer-events: none;
+      background: ${dark ? "#fafaf9" : "#1c1917"};
+      clip-path: circle(0% at ${x}px ${y}px);
+      transition: clip-path 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    `;
+    document.body.appendChild(overlay);
+
+    // Force reflow then animate
+    overlay.getBoundingClientRect();
+    requestAnimationFrame(() => {
+      overlay.style.clipPath = `circle(${maxDim}px at ${x}px ${y}px)`;
+    });
+
+    // Flip theme mid-animation
+    setTimeout(() => toggle(), 200);
+
+    // Clean up
+    setTimeout(() => {
+      overlay.style.transition = "opacity 0.15s";
+      overlay.style.opacity = "0";
+      setTimeout(() => overlay.remove(), 200);
+    }, 500);
+  };
+
   return (
     <button
-      onClick={toggle}
+      onClick={handleToggle}
       className={`inline-flex h-9 w-9 items-center justify-center rounded-full text-ink/60 transition-all duration-300 hover:bg-ink/5 hover:rotate-12 active:scale-90 active:-rotate-12 dark:text-cream/70 dark:hover:bg-cream/10 ${className ?? ""}`}
       aria-label="Toggle dark mode"
       title={dark ? "Switch to light mode" : "Switch to dark mode"}
