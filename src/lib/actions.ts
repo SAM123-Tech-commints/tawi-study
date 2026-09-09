@@ -21,6 +21,7 @@ import {
 import { isAdminUser, adminEmails } from "@/lib/admin";
 import {
   aiAvailable,
+  cleanupExactText,
   explainMore,
   generateCards,
   generateNotes,
@@ -623,8 +624,7 @@ export async function regenerateNotesAction(kitId: string): Promise<{ ok: boolea
 /* Suggest highlight terms with the AI engine (uses your API key when one is
  * configured, otherwise the built-in engine) — word AND its definition get
  * highlighted in Exact text because matches apply to the whole passage. */
-export async function suggestGuideTermsAction(kitId: string): Promise<{ ok: boolean; error?: string; terms?: string[]; ai?: boolean }> {
-  return guard(async () => {
+export async function suggestGuideTermsAction(kitId: string): Promise<{ ok: boolean; error?: string; terms?: string[]; ai?: boolean }> {  return guard(async () => {
     const user = await getUser();
     if (!user) return { ok: false, error: authError() };
     if (user.isGuest) return { ok: false, error: GUEST_MESSAGE };
@@ -638,6 +638,27 @@ export async function suggestGuideTermsAction(kitId: string): Promise<{ ok: bool
     const terms = (summary.keyTerms ?? []).map((k) => k.term).filter((t) => t && t.length > 2).slice(0, 12);
     if (!terms.length) return { ok: false, error: "No clear terms found — add your own below." };
     return { ok: true, terms, ai: aiAvailable() };
+  });
+}
+
+/* AI exact-text cleanup: fix spacing/blank lines, lay out bullets and
+ * Term — definition lines, keep EVERY word. Saves back to the kit. */
+export async function cleanupExactTextAction(kitId: string): Promise<{ ok: boolean; error?: string; ai?: boolean }> {
+  return guard(async () => {
+    const user = await getUser();
+    if (!user) return { ok: false, error: authError() };
+    if (user.isGuest) return { ok: false, error: GUEST_MESSAGE };
+    const [kit] = await db
+      .select()
+      .from(kits)
+      .where(and(eq(kits.id, kitId), eq(kits.userId, user.id)))
+      .limit(1);
+    if (!kit) return { ok: false, error: "Study kit not found." };
+    const { text, ai } = await cleanupExactText(kit.content.slice(0, 60000));
+    if (!text.trim()) return { ok: false, error: "Could not clean this text." };
+    await db.update(kits).set({ content: text, updatedAt: new Date() }).where(eq(kits.id, kit.id));
+    revalidatePath(`/kits/${kit.id}`);
+    return { ok: true, ai };
   });
 }
 
@@ -1400,6 +1421,17 @@ export async function fetchUrlAction(url: string): Promise<{
       }
     }
 
+    // 2c) No-key fallback: caption tracks embedded in the watch page
+    if (transcript.length <= 200) {
+      try {
+        const { fetchCaptionTracksTranscript } = await import("@/lib/youtube");
+        const viaTracks = await fetchCaptionTracksTranscript(videoId);
+        if (viaTracks.length > 200) transcript = viaTracks;
+      } catch (err) {
+        console.warn("[fetchUrl] captionTracks fallback failed:", err instanceof Error ? err.message : err);
+      }
+    }
+
     if (transcript.length > 200) {
       return {
         ok: true,
@@ -1441,15 +1473,31 @@ export async function fetchUrlAction(url: string): Promise<{
   }
 
   /* ---- Regular web page ---- */
-  const res = await fetch(url, {
-    headers: {
-      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-      "accept-language": "en-US,en;q=0.9",
-    },
-    signal: AbortSignal.timeout(15000),
-    redirect: "follow",
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      headers: {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "accept-language": "en-US,en;q=0.9",
+      },
+      signal: AbortSignal.timeout(15000),
+      redirect: "follow",
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/timeout|timed out|TimeoutError|aborted/i.test(msg)) {
+      return { ok: false, error: "The page took too long to respond (15s). It may block bots — paste the content instead." };
+    }
+    if (/ENOTFOUND|EAI_AGAIN|getaddrinfo/i.test(msg)) {
+      return { ok: false, error: "Could not find that website. Check the URL for typos." };
+    }
+    return { ok: false, error: "Could not reach that page. It may block automated readers — paste the content instead." };
+  }
+  if (res.status === 403 || res.status === 401) {
+    return { ok: false, error: "That page blocked the reader (paywall or bot protection). Paste the content instead." };
+  }
+  if (res.status === 404) return { ok: false, error: "Page not found (HTTP 404). Check the URL." };
   if (!res.ok) return { ok: false, error: `Could not fetch the page (HTTP ${res.status}).` };
   const contentType = res.headers.get("content-type") ?? "";
   const html = await res.text();

@@ -410,7 +410,47 @@ export async function generateNotes(content: string): Promise<NotesDraft> {
   return { sections: makeNotesLocal(content) };
 }
 
-/* --------------------------- learn more --------------------------- */
+/* ------------------------- exact-text cleanup ------------------------- */
+
+const CLEANUP_SYSTEM = `You are Tawi, a precise document formatter. Clean up study material formatting for an "exact text" reviewer view.
+ABSOLUTE RULES:
+- Output EVERYTHING from the input. Never drop, shorten, summarize or skip any sentence, bullet, number or name. Completeness beats beauty.
+- Fix broken spacing (words glued together or split by stray spaces/line breaks), collapse runs of blank lines to at most one, and put each bullet/step/numbered point on its own line starting with "- " or "1. " etc.
+- Keep **bold** markers exactly where they are; if a "Term — definition" or "Term: definition" pair is recognizable, make sure it reads as "Term — definition" on one line.
+- Plain text with markdown only (## headings, - bullets, **bold**). No commentary, no extra sections, no outside information.
+Respond with the cleaned text ONLY — no JSON, no quotes, no preamble.`;
+
+export async function cleanupExactText(content: string): Promise<{ text: string; ai: boolean }> {
+  if (aiAvailable()) {
+    try {
+      const out = await callAI(
+        CLEANUP_SYSTEM,
+        `Clean this study material's formatting (keep every word):\n\n${clip(content)}`,
+        false
+      );
+      const cleaned = out.replace(/```(text|markdown)?/gi, "").replace(/```/g, "").trim();
+      // Safety: an AI that drops more than 30% of the characters is hallucinating brevity.
+      if (cleaned.length > 20 && cleaned.length >= normalize(content).length * 0.7) {
+        return { text: cleaned, ai: true };
+      }
+      throw new Error("AI cleanup dropped too much content");
+    } catch (err) {
+      warn("cleanupExactText", err);
+    }
+  }
+  return { text: cleanupExactTextLocal(content), ai: false };
+}
+
+/** Conservative local pass: spacing and blank-line repair only, zero words lost. */
+export function cleanupExactTextLocal(content: string): string {
+  return normalize(content)
+    .split("\n")
+    .map((l) => l.replace(/[ \t]+/g, " ").trim())
+    .join("\n")
+    .replace(/([.!?:;])\s*\n(?=[a-z])/g, "$1 ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
 
 const EXPLAIN_SYSTEM = `You are Tawi, a patient, friendly study tutor. A student got this practice question. Explain the answer in depth, step by step, so the student genuinely understands the concept.
 - Use markdown: a short heading, 2–4 short paragraphs or bullet lists, **bold** key terms.

@@ -35,6 +35,14 @@ export async function GET() {
       database: "connected",
       host: safeHost(resolveDatabaseUrl()),
       ai: { enabled: aiAvailable(), engine: aiEngineLabel() },
+      // Presence only — never values. Use this to verify Vercel env vars.
+      keys: {
+        transcript: Boolean((process.env.TRANSCRIPT_API_KEY ?? "").trim()),
+        ocr: Boolean((process.env.OCR_SPACE_API_KEY ?? "").trim()),
+        google: Boolean(
+          (process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? process.env.GOOGLE_CLIENT_ID ?? "").trim()
+        ),
+      },
     });
   } catch (err) {
     return Response.json(

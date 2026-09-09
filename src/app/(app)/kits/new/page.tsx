@@ -14,7 +14,7 @@ import {
   UploadCloud,
 } from "lucide-react";
 import { createKitAction, fetchUrlAction, getSessionInfo } from "@/lib/actions";
-import { extractPdfText, extractTextFile } from "@/components/pdf";
+import { extractPdfText, extractTextFile, getPdfPageCount } from "@/components/pdf";
 import { extractTerms } from "@/lib/text";
 import {
   Badge,
@@ -53,6 +53,7 @@ export default function NewKitPage() {
   const [mode, setMode] = useState<"upload" | "link" | "paste" | null>(null);
   const [sources, setSources] = useState<Source[]>([]);
   const [pages, setPages] = useState(4);
+  const [pdfPages, setPdfPages] = useState(0);
   const [pasted, setPasted] = useState("");
   const [url, setUrl] = useState("");
   const [extracting, setExtracting] = useState(false);
@@ -102,7 +103,19 @@ export default function NewKitPage() {
       const lower = file.name.toLowerCase();
       const isImage = /\.(png|jpe?g|webp|bmp|tiff?)$/.test(lower);
       let text = "";
-      if (lower.endsWith(".pdf")) text = await extractPdfText(file);
+      if (lower.endsWith(".pdf")) {
+        // Size the pages slider to the real PDF ("auto max").
+        try {
+          const n = await getPdfPageCount(file);
+          if (n > 0) {
+            setPdfPages((p) => Math.max(p, n));
+            setPages(n);
+          }
+        } catch {
+          /* page count is a nicety — text extraction still proceeds */
+        }
+        text = await extractPdfText(file);
+      }
       else if (isImage) {
         // Auto-send images to OCR immediately
         setOcrBusy(true);
@@ -381,18 +394,23 @@ export default function NewKitPage() {
             <div className="mt-5">
               <div className="mb-1.5 flex items-center justify-between">
                 <Label2>How many pages of material?</Label2>
-                <span className="text-sm font-bold text-brand-700 dark:text-brand-400">{pages} page{pages > 1 ? "s" : ""}</span>
+                <span className="text-sm font-bold text-brand-700 dark:text-brand-400">
+                  {pages} page{pages > 1 ? "s" : ""}
+                  {pdfPages > 0 ? ` (PDF has ${pdfPages})` : ""}
+                </span>
               </div>
               <input
                 type="range"
                 min={1}
-                max={10}
-                value={pages}
+                max={Math.max(10, pdfPages)}
+                value={Math.min(pages, Math.max(10, pdfPages))}
                 onChange={(e) => setPages(Number(e.target.value))}
                 className="w-full accent-[#96C51F]"
               />
               <p className="mt-1 text-xs text-ink/45 dark:text-cream/45">
-                Roughly {pages * 3200} characters of material will be used to generate your kit.
+                {pdfPages > 0
+                  ? `Auto-set to your PDF's ${pdfPages} pages — drag down to use less.`
+                  : `Roughly ${pages * 3200} characters of material will be used to generate your kit.`}
               </p>
             </div>
           )}

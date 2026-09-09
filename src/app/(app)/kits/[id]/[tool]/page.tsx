@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import {
   addCardAction,
+  cleanupExactTextAction,
   deleteCardAction,
   deleteKitQuestionAction,
   getKitData,
@@ -830,6 +831,21 @@ function StudyGuideTool({
     onChanged();
   };
 
+  const cleanFormatting = async () => {
+    setBusy(true);
+    try {
+      const res = await cleanupExactTextAction(kit.id);
+      if (res.ok) {
+        toast(res.ai ? "Formatting fixed — every word kept ✨ (AI)" : "Spacing cleaned up ✨");
+        onChanged();
+      } else {
+        toast(res.error ?? "Could not clean formatting", "error");
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const guideText = () => {
     if (mode === "exact") return focusText ?? kit.content;
     if (mode === "notes") {
@@ -890,6 +906,11 @@ function StudyGuideTool({
           <Button variant="outline" size="sm" onClick={downloadTxt}>
             <Download size={14} /> Download
           </Button>
+          {mode === "exact" && (
+            <Button variant="outline" size="sm" onClick={cleanFormatting} disabled={busy} title="AI fixes spacing, blank lines and bullet layout — keeps every word">
+              {busy ? <Spinner className="h-4 w-4" /> : <Sparkles size={14} />} Clean formatting
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={regenerate} disabled={busy}>
             {busy ? <Spinner className="h-4 w-4" /> : <RefreshCw size={14} />} Regenerate
           </Button>

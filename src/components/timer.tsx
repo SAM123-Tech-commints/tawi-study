@@ -271,6 +271,39 @@ export function PomodoroTimer({
 /* Draggable by its header, minimizable to a pill, closable. The dashboard
  * re-opens it through its own "Focus timer" pill. */
 
+/** Minimized live clock: mirrors the running timer from storage every second. */
+function MiniClock() {
+  const [label, setLabel] = useState("--:--");
+  const [live, setLive] = useState(false);
+  useEffect(() => {
+    const tick = () => {
+      try {
+        const s = JSON.parse(localStorage.getItem(TIMER_KEY) ?? "null") as SavedTimer | null;
+        if (!s) {
+          setLabel("--:--");
+          setLive(false);
+          return;
+        }
+        let left = s.secondsLeft;
+        if (s.running) left = Math.max(0, s.secondsLeft - Math.floor((Date.now() - s.savedAt) / 1000));
+        setLabel(`${String(Math.floor(left / 60)).padStart(2, "0")}:${String(left % 60).padStart(2, "0")}`);
+        setLive(s.running && left > 0);
+      } catch {
+        /* ignore */
+      }
+    };
+    tick();
+    const t = setInterval(tick, 1000);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <span className="flex items-center gap-2 text-sm font-extrabold tabular-nums text-ink dark:text-cream" title="Focus timer">
+      <span className={`h-2.5 w-2.5 rounded-full ${live ? "animate-pulse bg-brand-500" : "bg-ink/20 dark:bg-cream/25"}`} />
+      {label}
+    </span>
+  );
+}
+
 export function TimerPopup({
   settings,
   onSettingsClick,
@@ -280,9 +313,32 @@ export function TimerPopup({
   onSettingsClick?: () => void;
   onClose: () => void;
 }) {
-  const [min, setMin] = useState(false);
-  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const [min, setMin] = useState(() => {
+    try {
+      // After a restart the popup comes back minimized, never maximized.
+      return JSON.parse(localStorage.getItem("tia-timer-ui") ?? "{}")?.min === true;
+    } catch {
+      return false;
+    }
+  });
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(() => {
+    try {
+      const p = JSON.parse(localStorage.getItem("tia-timer-ui") ?? "{}")?.pos;
+      if (p && typeof p.x === "number" && typeof p.y === "number") return p;
+    } catch {
+      /* ignore */
+    }
+    return null;
+  });
   const boxRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("tia-timer-ui", JSON.stringify({ min, pos }));
+    } catch {
+      /* ignore */
+    }
+  }, [min, pos]);
 
   const clampPos = (x: number, y: number) => ({
     x: Math.min(Math.max(8, x), Math.max(8, window.innerWidth - 316)),
@@ -320,12 +376,25 @@ export function TimerPopup({
       style={pos ? { left: pos.x, top: pos.y } : { right: 20, bottom: 20 }}
     >
       {min ? (
-        <button
-          onClick={() => setMin(false)}
-          className="flex items-center gap-2 rounded-full border border-ink/10 bg-surface px-4 py-2.5 text-sm font-bold text-ink shadow-xl transition hover:scale-105 active:scale-95 dark:border-cream/15 dark:bg-surface-dark dark:text-cream"
-        >
-          <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-brand-500" /> Focus timer — expand
-        </button>
+        <div className="flex items-center gap-1 rounded-full border border-ink/10 bg-surface py-1.5 pl-4 pr-1.5 shadow-xl dark:border-cream/15 dark:bg-surface-dark">
+          <MiniClock />
+          <button
+            onClick={() => setMin(false)}
+            className="rounded-full p-1.5 text-ink/55 transition hover:bg-ink/5 active:scale-90 dark:text-cream/55 dark:hover:bg-cream/10"
+            aria-label="Expand timer"
+            title="Expand"
+          >
+            <Play size={14} fill="currentColor" />
+          </button>
+          <button
+            onClick={onClose}
+            className="rounded-full p-1.5 text-ink/45 transition hover:bg-ink/5 active:scale-90 dark:text-cream/45 dark:hover:bg-cream/10"
+            aria-label="Close timer"
+            title="Close"
+          >
+            <X size={14} />
+          </button>
+        </div>
       ) : (
         <div
           ref={boxRef}

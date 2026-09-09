@@ -79,3 +79,20 @@ export async function extractPdfText(file: File): Promise<string> {
 export async function extractTextFile(file: File): Promise<string> {
   return file.text();
 }
+
+/** Page count only — cheap, no text parsing. Used to size the pages slider. */
+export async function getPdfPageCount(file: File): Promise<number> {
+  const pdfjs = (await import("pdfjs-dist")) as unknown as {
+    GlobalWorkerOptions: { workerSrc: string };
+    getDocument: (opts: { data: ArrayBuffer }) => { promise: Promise<{ numPages: number }> };
+  };
+  if (!pdfjs.GlobalWorkerOptions.workerSrc) {
+    pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+      "pdfjs-dist/build/pdf.worker.min.mjs",
+      import.meta.url
+    ).toString();
+  }
+  const buf = await file.arrayBuffer();
+  const doc = await pdfjs.getDocument({ data: buf }).promise;
+  return doc.numPages;
+}

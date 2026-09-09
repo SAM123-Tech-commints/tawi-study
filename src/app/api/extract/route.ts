@@ -80,6 +80,15 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      // No-key fallback: caption tracks embedded in the watch page
+      if (transcript.length <= 200) {
+        try {
+          const { fetchCaptionTracksTranscript } = await import("@/lib/youtube");
+          const viaTracks = await fetchCaptionTracksTranscript(videoId);
+          if (viaTracks.length > 200) transcript = viaTracks;
+        } catch {}
+      }
+
       if (transcript.length > 200) {
         return NextResponse.json({
           ok: true,
