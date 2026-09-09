@@ -39,6 +39,7 @@ export const communityPosts = pgTable("community_posts", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id").notNull(),
   content: text("content").notNull(),
+  image: text("image"), // base64 data URL or null (max ~1MB)
   pinned: boolean("pinned").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -77,7 +78,34 @@ export const communityMessages = pgTable("community_messages", {
   senderId: uuid("sender_id").notNull(),
   receiverId: uuid("receiver_id").notNull(),
   content: text("content").notNull(),
+  image: text("image"), // base64 data URL or null
   read: boolean("read").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** A group chat (GC): named, owned, invite-only. */
+export const communityGroups = pgTable("community_groups", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  ownerId: uuid("owner_id").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Membership edge for group chats. */
+export const communityGroupMembers = pgTable("community_group_members", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  groupId: uuid("group_id").notNull(),
+  userId: uuid("user_id").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Message inside a group chat. */
+export const communityGroupMessages = pgTable("community_group_messages", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  groupId: uuid("group_id").notNull(),
+  senderId: uuid("sender_id").notNull(),
+  content: text("content").notNull(),
+  image: text("image"), // base64 data URL or null
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

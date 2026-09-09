@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Camera, Check, Copy, EyeOff, KeyRound, LogOut, RefreshCw, Settings2, Trash2, User, Users } from "lucide-react";
+import { Camera, Check, Copy, EyeOff, GraduationCap, KeyRound, LogOut, Pencil, RefreshCw, Settings2, Trash2, User, Users } from "lucide-react";
 import { Avatar, Button, Card, cn, Field, Input, Spinner, Textarea, useToast } from "@/components/ui";
 import { ACCENTS, applyAccent, useTheme, type ThemeMode } from "@/components/theme";
 import {
@@ -278,20 +278,22 @@ export default function ProfilePage() {
         <div className="grid grid-cols-2 gap-2.5">
           {(
             [
-              ["student", "✏️ Student", "Study kits, flashcards & practice tests"],
-              ["educator", "🎓 Educator", "Assignments & worksheets to share"],
+              ["student", "Student", Pencil, "Study kits, flashcards & practice tests"],
+              ["educator", "Educator", GraduationCap, "Assignments & worksheets to share"],
             ] as const
-          ).map(([id, label, desc]) => (
+          ).map(([id, label, Icon, desc]) => (
             <button
               key={id}
               onClick={() => setRole(id)}
-              className={`rounded-2xl border-2 p-4 text-left transition ${
+              className={`rounded-2xl border-2 p-4 text-left transition active:scale-[0.99] ${
                 role === id
                   ? "border-brand-500 bg-brand-50 dark:bg-brand-500/10"
                   : "border-ink/10 hover:border-ink/25 dark:border-cream/15"
               }`}
             >
-              <p className="text-sm font-bold text-ink dark:text-cream">{label}</p>
+              <p className="flex items-center gap-1.5 text-sm font-bold text-ink dark:text-cream">
+                <Icon size={15} /> {label}
+              </p>
               <p className="mt-1 text-xs text-ink/55 dark:text-cream/55">{desc}</p>
             </button>
           ))}

@@ -9,6 +9,7 @@ import {
   BookOpen,
   Brain,
   Copy,
+  FileText,
   Gamepad2,
   Layers,
   MessageCircleQuestion,
@@ -142,7 +143,11 @@ export default function KitDetailPage() {
             <Badge tone={kit.aiEnabled ? "violet" : "neutral"}>
               <Sparkles size={11} /> {kit.aiEnabled ? "AI-generated" : "Built-in engine"}
             </Badge>
-            {kit.sourceName && <span>📄 {kit.sourceName}</span>}
+            {kit.sourceName && (
+              <span className="inline-flex items-center gap-1">
+                <FileText size={13} /> {kit.sourceName}
+              </span>
+            )}
             <span>· {formatDate(kit.createdAt)}</span>
             <span>· {cards.length} cards · {questions.length} questions</span>
           </p>

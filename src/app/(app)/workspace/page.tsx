@@ -7,10 +7,13 @@ import {
   CheckCircle2,
   Circle,
   FileText,
+  ListChecks,
+  MessageCircle,
   NotebookPen,
   Plus,
   Sparkles,
   Trash2,
+  Users,
 } from "lucide-react";
 import {
   createTaskAction,
@@ -88,24 +91,25 @@ export default function WorkspacePage() {
       </section>
 
       <div className="flex flex-wrap gap-2 border-b border-ink/10 pb-3 dark:border-cream/15">
-        {(["tasks", "notes", "docs", "community"] as const).map((t) => (
+        {(
+          [
+            ["tasks", "Tasks", ListChecks],
+            ["notes", "Notes", NotebookPen],
+            ["docs", "Documents", FileText],
+            ["community", "Community", Users],
+          ] as const
+        ).map(([t, label, Icon]) => (
           <button
             key={t}
             onClick={() => setTab(t)}
             className={cn(
-              "rounded-full px-4 py-1.5 text-sm font-bold transition",
+              "inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-bold transition active:scale-95",
               tab === t
                 ? "bg-ink text-cream dark:bg-cream dark:text-ink"
                 : "text-ink/50 hover:bg-ink/5 dark:text-cream/50 dark:hover:bg-cream/10"
             )}
           >
-            {t === "tasks"
-              ? "✅ Tasks"
-              : t === "notes"
-                ? "📝 Notes"
-                : t === "docs"
-                  ? "📄 Documents"
-                  : "👥 Community"}
+            <Icon size={15} /> {label}
           </button>
         ))}
       </div>

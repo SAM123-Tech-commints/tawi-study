@@ -5,10 +5,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Check,
   Crown,
+  GraduationCap,
+  ImagePlus,
   Loader2,
   Megaphone,
   MessageCircle,
   Pin,
+  Plus,
   Search,
   Send,
   Shield,
@@ -23,25 +26,32 @@ import {
 } from "lucide-react";
 import {
   addCommentAction,
+  createGroupAction,
   createPostAction,
   deleteCommentAction,
+  deleteGroupAction,
   deletePostAction,
   getChatsData,
   getCommunityData,
   getConversationAction,
+  getGroupMessagesAction,
+  getGroupsData,
   getProfilePreviewAction,
   heartbeatAction,
+  inviteToGroupAction,
+  leaveGroupAction,
   promoteToAdminAction,
   reactToPostAction,
   removeFriendAction,
   removeMemberAction,
   respondFriendRequestAction,
   sendFriendRequestAction,
+  sendGroupMessageAction,
   sendMessageAction,
   setUserMutedAction,
   togglePinPostAction,
 } from "@/lib/actions";
-import { Avatar, Badge, Button, Card, cn, ConfirmDialog, EmptyState, Input, Spinner, Textarea, useToast } from "@/components/ui";
+import { Avatar, Badge, Button, Card, cn, ConfirmDialog, EmptyState, Field, Input, Modal, Spinner, Textarea, useToast } from "@/components/ui";
 
 /* ------------------------------- types ------------------------------- */
 
@@ -136,7 +146,7 @@ function RoleBadge({ author }: { author: { isAdmin: boolean; role: string | null
   if (author.role === "educator")
     return (
       <Badge tone="brand" className="gap-1">
-        🎓 Educator
+        <GraduationCap size={11} /> Educator
       </Badge>
     );
   return null;
@@ -146,7 +156,7 @@ function RoleBadge({ author }: { author: { isAdmin: boolean; role: string | null
 
 export default function Community() {
   const router = useRouter();
-  const [view, setView] = useState<"feed" | "chats">("feed");
+  const [view, setView] = useState<"feed" | "chats" | "groups">("feed");
   const [data, setData] = useState<CommunityData | null>(null);
   const [loading, setLoading] = useState(true);
   const [previewId, setPreviewId] = useState<string | null>(null);
@@ -202,27 +212,30 @@ export default function Community() {
       <div className="inline-flex items-center gap-1 rounded-full border border-ink/10 bg-ink/5 p-1 dark:border-cream/10 dark:bg-cream/5">
         {(
           [
-            ["feed", "📢 Feed"],
-            ["chats", "💬 Friend chats"],
+            ["feed", "Feed", Megaphone],
+            ["chats", "Friend chats", MessageCircle],
+            ["groups", "Group chats", Users],
           ] as const
-        ).map(([id, label]) => (
+        ).map(([id, label, Icon]) => (
           <button
             key={id}
             onClick={() => setView(id)}
             className={cn(
-              "rounded-full px-4 py-1.5 text-sm font-bold transition-all active:scale-95",
+              "inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-bold transition-all active:scale-95",
               view === id
                 ? "bg-surface text-ink shadow-sm dark:bg-cream/15 dark:text-cream"
                 : "text-ink/60 hover:text-ink dark:text-cream/60 dark:hover:text-cream"
             )}
           >
-            {label}
+            <Icon size={15} /> {label}
           </button>
         ))}
       </div>
 
       {view === "chats" ? (
         <ChatsTab me={me} />
+      ) : view === "groups" ? (
+        <GroupsTab me={me} />
       ) : (
       <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
       {/* ------------------------------- FEED ------------------------------- */}
@@ -285,11 +298,440 @@ export default function Community() {
   );
 }
 
-/* ============================ friend chats ============================ */
+/* ============================ group chats ============================ */
 
-type ChatsData = NonNullable<Awaited<ReturnType<typeof getChatsData>>>;
+type GroupsData = NonNullable<Awaited<ReturnType<typeof getGroupsData>>>;
+type GroupItem = GroupsData["groups"][number];
+type GroupMessage = { id: string; mine: boolean; senderName: string; senderAvatar: string | null; content: string; image: string | null; createdAt: string };
+
+function GroupsTab({ me }: { me: CommunityData["me"] }) {
+  const router = useRouter();
+  const { toast } = useToast();
+  const [groups, setGroups] = useState<GroupItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<GroupMessage[]>([]);
+  const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+  const [gImage, setGImage] = useState<string | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [gName, setGName] = useState("");
+  const [picked, setPicked] = useState<string[]>([]);
+  const [friends, setFriends] = useState<{ id: string; name: string; avatar: string | null }[]>([]);
+  const [creating, setCreating] = useState(false);
+  const [showInvite, setShowInvite] = useState(false);
+  const [askLeave, setAskLeave] = useState(false);
+  const [askDelete, setAskDelete] = useState(false);
+  const gFileRef = useRef<HTMLInputElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  const loadAll = useCallback(async () => {
+    const [g, c] = await Promise.all([getGroupsData(), getChatsData()]);
+    if (g) setGroups(g.groups);
+    if (c) setFriends(c.chats.map((x) => ({ id: x.id, name: x.name, avatar: x.avatar })));
+    setLoading(false);
+  }, []);
+
+  const loadThread = useCallback(
+    async (groupId: string) => {
+      const res = await getGroupMessagesAction(groupId);
+      if (!res.ok) {
+        toast(res.error ?? "Could not open group", "error");
+        return;
+      }
+      setMessages(res.messages);
+    },
+    [toast]
+  );
+
+  useEffect(() => {
+    loadAll();
+  }, [loadAll]);
+
+  useEffect(() => {
+    if (!openId) return;
+    loadThread(openId);
+    const t = setInterval(() => {
+      loadThread(openId);
+      loadAll();
+    }, 5000);
+    return () => clearInterval(t);
+  }, [openId, loadThread, loadAll]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [messages, openId]);
+
+  const open = groups.find((g) => g.id === openId) ?? null;
+  const invitable = friends.filter((f) => !open?.members.some((m) => m.id === f.id));
+
+  const create = async () => {
+    if (creating) return;
+    setCreating(true);
+    const res = await createGroupAction({ name: gName, memberIds: picked });
+    setCreating(false);
+    if (!res.ok) {
+      toast(res.error ?? "Could not create group", "error");
+      if (/guest|sign in/i.test(res.error ?? "")) router.push("/signin");
+      return;
+    }
+    setGName("");
+    setPicked([]);
+    setShowCreate(false);
+    toast("Group chat created 🎉");
+    await loadAll();
+    if (res.id) {
+      setOpenId(res.id);
+      setMessages([]);
+    }
+  };
+
+  const invite = async (userId: string) => {
+    if (!openId) return;
+    const res = await inviteToGroupAction({ groupId: openId, userId });
+    if (!res.ok) {
+      toast(res.error ?? "Could not invite", "error");
+      return;
+    }
+    toast("Invited to the group 🤝");
+    await loadAll();
+  };
+
+  const leave = async () => {
+    if (!openId) return;
+    setAskLeave(false);
+    const res = await leaveGroupAction(openId);
+    if (!res.ok) {
+      toast(res.error ?? "Could not leave", "error");
+      return;
+    }
+    toast("Left the group");
+    setOpenId(null);
+    setMessages([]);
+    await loadAll();
+  };
+
+  const remove = async () => {
+    if (!openId) return;
+    setAskDelete(false);
+    const res = await deleteGroupAction(openId);
+    if (!res.ok) {
+      toast(res.error ?? "Could not delete", "error");
+      return;
+    }
+    toast("Group deleted");
+    setOpenId(null);
+    setMessages([]);
+    await loadAll();
+  };
+
+  const pickGImage = (file: File | undefined) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast("Only image files work here.", "error");
+      return;
+    }
+    if (file.size > 1_000_000) {
+      toast("Image must be under ~1MB.", "error");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => setGImage(String(reader.result ?? ""));
+    reader.onerror = () => toast("Could not read that image.", "error");
+    reader.readAsDataURL(file);
+  };
+
+  const send = async () => {
+    const body = draft.trim();
+    if ((!body && !gImage) || !openId || sending) return;
+    setSending(true);
+    const res = await sendGroupMessageAction({ groupId: openId, content: body, image: gImage });
+    setSending(false);
+    if (!res.ok) {
+      toast(res.error ?? "Could not send", "error");
+      return;
+    }
+    setDraft("");
+    setGImage(null);
+    await loadThread(openId);
+    await loadAll();
+  };
+
+  if (loading) {
+    return (
+      <div className="flex h-[40vh] items-center justify-center">
+        <Spinner className="h-7 w-7" />
+      </div>
+    );
+  }
+
+  if (me.isGuest) {
+    return (
+      <Card className="flex items-center justify-between gap-3">
+        <p className="text-sm font-medium text-ink/70 dark:text-cream/70">
+          Group chats are for members — sign in and add friends to start a GC.
+        </p>
+        <Button size="sm" onClick={() => router.push("/signin")}>
+          Sign in
+        </Button>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="grid gap-4 md:grid-cols-[280px_1fr]">
+      {/* Group list */}
+      <div className="space-y-3">
+        <Button onClick={() => setShowCreate(true)} className="w-full">
+          <Plus size={15} /> New group chat
+        </Button>
+        <Card className="max-h-[52vh] space-y-1 overflow-auto p-3">
+          {groups.length === 0 ? (
+            <div className="p-3 text-center">
+              <p className="text-sm font-bold text-ink dark:text-cream">No groups yet</p>
+              <p className="mt-1 text-[13px] text-ink/55 dark:text-cream/55">
+                Create a GC and invite your friends.
+              </p>
+            </div>
+          ) : (
+            groups.map((g) => (
+              <button
+                key={g.id}
+                onClick={() => {
+                  setOpenId(g.id);
+                  setMessages([]);
+                  setGImage(null);
+                }}
+                className={cn(
+                  "flex w-full items-center gap-2.5 rounded-2xl p-2 text-left transition active:scale-[0.99]",
+                  openId === g.id ? "bg-brand-100 dark:bg-brand-500/15" : "hover:bg-ink/[0.04] dark:hover:bg-cream/[0.06]"
+                )}
+              >
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-brand-500 text-base font-extrabold text-ink">
+                  {g.name.slice(0, 1).toUpperCase()}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[13px] font-bold text-ink dark:text-cream">{g.name}</span>
+                  <span className="block truncate text-[12px] text-ink/50 dark:text-cream/50">
+                    {g.members.length} member{g.members.length === 1 ? "" : "s"}
+                    {g.lastMessage ? ` · ${g.lastMessage}` : ""}
+                  </span>
+                </span>
+              </button>
+            ))
+          )}
+        </Card>
+      </div>
+
+      {/* Thread */}
+      <Card className="flex max-h-[60vh] min-h-[320px] flex-col p-4">
+        {!open ? (
+          <div className="grid flex-1 place-items-center text-center">
+            <div>
+              <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-ink/5 text-ink/50 dark:bg-cream/10 dark:text-cream/50">
+                <Users size={24} />
+              </span>
+              <p className="mt-2 text-sm font-bold text-ink dark:text-cream">Pick a group</p>
+              <p className="mt-1 text-[13px] text-ink/55 dark:text-cream/55">Or create one and invite friends.</p>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="mb-3 flex items-center justify-between gap-2 border-b border-ink/8 pb-3 dark:border-cream/10">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-bold text-ink dark:text-cream">{open.name}</p>
+                <p className="truncate text-[11px] text-ink/50 dark:text-cream/50">
+                  {open.members.map((m) => m.name.split(" ")[0]).join(", ")}
+                </p>
+              </div>
+              <div className="flex shrink-0 gap-1.5">
+                <Button variant="outline" size="sm" onClick={() => setShowInvite(true)}>
+                  <UserPlus size={14} /> Invite
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setAskLeave(true)} className="text-red-500">
+                  Leave
+                </Button>
+                {open.isOwner && (
+                  <Button variant="ghost" size="sm" onClick={() => setAskDelete(true)} className="text-red-500" title="Delete group">
+                    <Trash2 size={14} />
+                  </Button>
+                )}
+              </div>
+            </div>
+            <div className="flex-1 space-y-2 overflow-auto py-1">
+              {messages.map((m) => (
+                <div key={m.id} className={cn("flex gap-2", m.mine ? "justify-end" : "justify-start")}>
+                  {!m.mine && <UserAvatar name={m.senderName} avatar={m.senderAvatar} size={28} />}
+                  <div
+                    className={cn(
+                      "max-w-[80%] rounded-2xl px-3.5 py-2 text-[13.5px] leading-snug",
+                      m.mine
+                        ? "rounded-br-md bg-brand-500 font-medium text-ink"
+                        : "rounded-bl-md bg-ink/[0.05] text-ink/85 dark:bg-cream/10 dark:text-cream/85"
+                    )}
+                  >
+                    {!m.mine && (
+                      <p className="mb-0.5 text-[11px] font-bold text-brand-700 dark:text-brand-300">{m.senderName}</p>
+                    )}
+                    {m.image && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={m.image} alt="Attached" className="mb-1.5 max-h-48 rounded-xl object-cover" loading="lazy" />
+                    )}
+                    {m.content ? <p className="whitespace-pre-wrap break-words">{m.content}</p> : null}
+                    <p className={cn("mt-0.5 text-right text-[10px]", m.mine ? "text-ink/55" : "text-ink/40 dark:text-cream/40")}>
+                      {timeAgo(m.createdAt)}
+                    </p>
+                  </div>
+                </div>
+              ))}
+              <div ref={bottomRef} />
+            </div>
+            {gImage && (
+              <div className="relative mt-2 w-fit">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={gImage} alt="Attached" className="max-h-28 rounded-xl border border-ink/10 object-cover dark:border-cream/15" />
+                <button
+                  onClick={() => setGImage(null)}
+                  className="absolute right-1 top-1 rounded-full bg-black/60 p-1 text-white transition hover:bg-black/80"
+                  aria-label="Remove image"
+                >
+                  <X size={11} />
+                </button>
+              </div>
+            )}
+            <div className="mt-2 flex items-center gap-2">
+              <input
+                ref={gFileRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  pickGImage(e.target.files?.[0]);
+                  e.target.value = "";
+                }}
+              />
+              <button
+                onClick={() => gFileRef.current?.click()}
+                className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-ink/55 transition hover:bg-ink/5 active:scale-90 dark:text-cream/55 dark:hover:bg-cream/10"
+                aria-label="Attach image"
+                title="Attach image"
+              >
+                <ImagePlus size={17} />
+              </button>
+              <Input
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                placeholder={`Message ${open.name}…`}
+                maxLength={1000}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    send();
+                  }
+                }}
+                className="h-10"
+              />
+              <Button onClick={send} disabled={sending || (!draft.trim() && !gImage)} className="shrink-0">
+                {sending ? <Spinner className="h-4 w-4 border-ink/30 border-t-ink" /> : <Send size={15} />}
+              </Button>
+            </div>
+          </>
+        )}
+      </Card>
+
+      {/* Create modal */}
+      <Modal open={showCreate} onClose={() => setShowCreate(false)}>
+        <h3 className="font-display text-lg font-bold text-ink dark:text-cream">New group chat</h3>
+        <div className="mt-4 space-y-4">
+          <Field label="Group name">
+            <Input value={gName} onChange={(e) => setGName(e.target.value)} placeholder="e.g. Bio 4A study GC" maxLength={60} />
+          </Field>
+          <Field label="Invite friends" hint="Only friends can be invited.">
+            <div className="max-h-48 space-y-1 overflow-auto">
+              {friends.length === 0 ? (
+                <p className="text-[13px] text-ink/50 dark:text-cream/50">
+                  No friends yet — add friends from the Feed first.
+                </p>
+              ) : (
+                friends.map((f) => (
+                  <label key={f.id} className="flex cursor-pointer items-center gap-2.5 rounded-xl p-1.5 transition hover:bg-ink/[0.04] dark:hover:bg-cream/[0.06]">
+                    <input
+                      type="checkbox"
+                      checked={picked.includes(f.id)}
+                      onChange={() =>
+                        setPicked((p) => (p.includes(f.id) ? p.filter((x) => x !== f.id) : [...p, f.id]))
+                      }
+                      className="h-4 w-4 accent-[#96C51F]"
+                    />
+                    <UserAvatar name={f.name} avatar={f.avatar} size={30} />
+                    <span className="text-[13px] font-bold text-ink dark:text-cream">{f.name}</span>
+                  </label>
+                ))
+              )}
+            </div>
+          </Field>
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <Button variant="ghost" onClick={() => setShowCreate(false)}>
+            Cancel
+          </Button>
+          <Button onClick={create} disabled={creating || gName.trim().length < 2 || !picked.length}>
+            {creating ? <Spinner className="h-4 w-4 border-ink/30 border-t-ink" /> : <Plus size={15} />}
+            Create GC
+          </Button>
+        </div>
+      </Modal>
+
+      {/* Invite modal */}
+      <Modal open={showInvite} onClose={() => setShowInvite(false)}>
+        <h3 className="font-display text-lg font-bold text-ink dark:text-cream">Invite to {open?.name ?? "group"}</h3>
+        <div className="mt-4 max-h-64 space-y-1 overflow-auto">
+          {invitable.length === 0 ? (
+            <p className="text-[13px] text-ink/50 dark:text-cream/50">All your friends are already here 🎉</p>
+          ) : (
+            invitable.map((f) => (
+              <div key={f.id} className="flex items-center gap-2.5 rounded-xl p-1.5">
+                <UserAvatar name={f.name} avatar={f.avatar} size={32} />
+                <span className="min-w-0 flex-1 truncate text-[13px] font-bold text-ink dark:text-cream">{f.name}</span>
+                <Button size="sm" variant="outline" onClick={() => invite(f.id)}>
+                  <UserPlus size={14} /> Invite
+                </Button>
+              </div>
+            ))
+          )}
+        </div>
+        <div className="mt-4 flex justify-end">
+          <Button variant="ghost" onClick={() => setShowInvite(false)}>
+            Done
+          </Button>
+        </div>
+      </Modal>
+
+      <ConfirmDialog
+        open={askLeave}
+        title={`Leave ${open?.name ?? "group"}?`}
+        message="You'll stop receiving its messages. The group stays for everyone else."
+        confirmLabel="Leave"
+        danger
+        onCancel={() => setAskLeave(false)}
+        onConfirm={leave}
+      />
+      <ConfirmDialog
+        open={askDelete}
+        title={`Delete ${open?.name ?? "group"}?`}
+        message="All messages disappear for everyone. This can't be undone."
+        confirmLabel="Delete"
+        danger
+        onCancel={() => setAskDelete(false)}
+        onConfirm={remove}
+      />
+    </div>
+  );
+}
+
+/* ============================ friend chats ============================ */type ChatsData = NonNullable<Awaited<ReturnType<typeof getChatsData>>>;
 type ChatItem = ChatsData["chats"][number];
-type ChatMessage = { id: string; mine: boolean; content: string; createdAt: string };
+type ChatMessage = { id: string; mine: boolean; content: string; image: string | null; createdAt: string };
 
 function ChatsTab({ me }: { me: CommunityData["me"] }) {
   const router = useRouter();
@@ -300,6 +742,8 @@ function ChatsTab({ me }: { me: CommunityData["me"] }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const [chatImage, setChatImage] = useState<string | null>(null);
+  const chatFileRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const loadChats = useCallback(async () => {
@@ -342,13 +786,30 @@ function ChatsTab({ me }: { me: CommunityData["me"] }) {
   const openChat = (id: string) => {
     setOpenId(id);
     setMessages([]);
+    setChatImage(null);
+  };
+
+  const pickChatImage = (file: File | undefined) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast("Only image files work here.", "error");
+      return;
+    }
+    if (file.size > 1_000_000) {
+      toast("Image must be under ~1MB.", "error");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => setChatImage(String(reader.result ?? ""));
+    reader.onerror = () => toast("Could not read that image.", "error");
+    reader.readAsDataURL(file);
   };
 
   const send = async () => {
     const body = draft.trim();
-    if (!body || !openId || sending) return;
+    if ((!body && !chatImage) || !openId || sending) return;
     setSending(true);
-    const res = await sendMessageAction({ friendId: openId, content: body });
+    const res = await sendMessageAction({ friendId: openId, content: body, image: chatImage });
     setSending(false);
     if (!res.ok) {
       toast(res.error ?? "Could not send", "error");
@@ -356,6 +817,7 @@ function ChatsTab({ me }: { me: CommunityData["me"] }) {
       return;
     }
     setDraft("");
+    setChatImage(null);
     await loadThread(openId);
     await loadChats();
   };
@@ -438,7 +900,9 @@ function ChatsTab({ me }: { me: CommunityData["me"] }) {
         {!open ? (
           <div className="grid flex-1 place-items-center text-center">
             <div>
-              <p className="text-4xl">💬</p>
+              <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-ink/5 text-ink/50 dark:bg-cream/10 dark:text-cream/50">
+                <MessageCircle size={24} />
+              </span>
               <p className="mt-2 text-sm font-bold text-ink dark:text-cream">Pick a conversation</p>
               <p className="mt-1 text-[13px] text-ink/55 dark:text-cream/55">Only friends can message each other.</p>
             </div>
@@ -465,7 +929,11 @@ function ChatsTab({ me }: { me: CommunityData["me"] }) {
                         : "rounded-bl-md bg-ink/[0.05] text-ink/85 dark:bg-cream/10 dark:text-cream/85"
                     )}
                   >
-                    <p className="whitespace-pre-wrap break-words">{m.content}</p>
+                    {m.image && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={m.image} alt="Attached" className="mb-1.5 max-h-48 rounded-xl object-cover" loading="lazy" />
+                    )}
+                    {m.content ? <p className="whitespace-pre-wrap break-words">{m.content}</p> : null}
                     <p className={cn("mt-0.5 text-right text-[10px]", m.mine ? "text-ink/55" : "text-ink/40 dark:text-cream/40")}>
                       {timeAgo(m.createdAt)}
                     </p>
@@ -474,7 +942,38 @@ function ChatsTab({ me }: { me: CommunityData["me"] }) {
               ))}
               <div ref={bottomRef} />
             </div>
-            <div className="mt-3 flex items-center gap-2">
+            {chatImage && (
+              <div className="relative mt-2 w-fit">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={chatImage} alt="Attached" className="max-h-28 rounded-xl border border-ink/10 object-cover dark:border-cream/15" />
+                <button
+                  onClick={() => setChatImage(null)}
+                  className="absolute right-1 top-1 rounded-full bg-black/60 p-1 text-white transition hover:bg-black/80"
+                  aria-label="Remove image"
+                >
+                  <X size={11} />
+                </button>
+              </div>
+            )}
+            <div className="mt-2 flex items-center gap-2">
+              <input
+                ref={chatFileRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  pickChatImage(e.target.files?.[0]);
+                  e.target.value = "";
+                }}
+              />
+              <button
+                onClick={() => chatFileRef.current?.click()}
+                className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-ink/55 transition hover:bg-ink/5 active:scale-90 dark:text-cream/55 dark:hover:bg-cream/10"
+                aria-label="Attach image"
+                title="Attach image"
+              >
+                <ImagePlus size={17} />
+              </button>
               <Input
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
@@ -488,7 +987,7 @@ function ChatsTab({ me }: { me: CommunityData["me"] }) {
                 }}
                 className="h-10"
               />
-              <Button onClick={send} disabled={sending || !draft.trim()} className="shrink-0">
+              <Button onClick={send} disabled={sending || (!draft.trim() && !chatImage)} className="shrink-0">
                 {sending ? <Spinner className="h-4 w-4 border-ink/30 border-t-ink" /> : <Send size={15} />}
               </Button>
             </div>
@@ -513,12 +1012,38 @@ function Composer({
   const { toast } = useToast();
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
+  const [image, setImage] = useState<string | null>(null);
+  const [imgBusy, setImgBusy] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const pickImage = (file: File | undefined) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast("Only image files work here.", "error");
+      return;
+    }
+    if (file.size > 1_000_000) {
+      toast("Image must be under ~1MB.", "error");
+      return;
+    }
+    setImgBusy(true);
+    const reader = new FileReader();
+    reader.onload = () => {
+      setImage(String(reader.result ?? ""));
+      setImgBusy(false);
+    };
+    reader.onerror = () => {
+      setImgBusy(false);
+      toast("Could not read that image.", "error");
+    };
+    reader.readAsDataURL(file);
+  };
 
   const submit = async () => {
     const body = text.trim();
     if (!body) return;
     setBusy(true);
-    const res = await createPostAction(body);
+    const res = await createPostAction(body, image);
     setBusy(false);
     if (!res.ok) {
       toast(res.error ?? "Could not post", "error");
@@ -526,6 +1051,7 @@ function Composer({
       return;
     }
     setText("");
+    setImage(null);
     toast("Posted to the community 🎉");
     await onPosted();
   };
@@ -548,9 +1074,42 @@ function Composer({
         rows={3}
         maxLength={2000}
       />
+      {image && (
+        <div className="relative w-fit">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={image} alt="Attached" className="max-h-48 rounded-2xl border border-ink/10 object-cover dark:border-cream/15" />
+          <button
+            onClick={() => setImage(null)}
+            className="absolute right-2 top-2 rounded-full bg-black/60 p-1.5 text-white transition hover:bg-black/80 active:scale-90"
+            aria-label="Remove image"
+          >
+            <X size={13} />
+          </button>
+        </div>
+      )}
       <div className="flex items-center justify-between">
-        <span className="text-[11px] text-ink/40 dark:text-cream/40">{text.length}/2000</span>
-        <Button onClick={submit} disabled={busy || !text.trim()}>
+        <div className="flex items-center gap-2">
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              pickImage(e.target.files?.[0]);
+              e.target.value = "";
+            }}
+          />
+          <button
+            onClick={() => fileRef.current?.click()}
+            disabled={imgBusy || !!image}
+            className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-semibold text-ink/60 transition hover:bg-ink/5 active:scale-95 disabled:opacity-50 dark:text-cream/60 dark:hover:bg-cream/10"
+          >
+            {imgBusy ? <Spinner className="h-4 w-4" /> : <ImagePlus size={16} />}
+            Photo
+          </button>
+          <span className="text-[11px] text-ink/40 dark:text-cream/40">{text.length}/2000</span>
+        </div>
+        <Button onClick={submit} disabled={busy || imgBusy || !text.trim()}>
           {busy ? <Spinner className="border-ink/30 border-t-ink" /> : <Send size={15} />}
           Post
         </Button>
@@ -702,6 +1261,15 @@ function PostCard({
       <p className="whitespace-pre-wrap break-words text-[15px] leading-relaxed text-ink/85 dark:text-cream/85">
         {post.content}
       </p>
+      {post.image && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={post.image}
+          alt="Post attachment"
+          className="max-h-96 w-full rounded-2xl border border-ink/10 object-cover dark:border-cream/15"
+          loading="lazy"
+        />
+      )}
       <ConfirmDialog
         open={askDelete}
         title="Delete this post?"

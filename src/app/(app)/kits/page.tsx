@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { BookOpen, Copy, Layers, MessageCircleQuestion, Pin, PinOff, Plus, Trash2 } from "lucide-react";
+import { BookOpen, Copy, FileText, Layers, MessageCircleQuestion, Pin, PinOff, Plus, Trash2 } from "lucide-react";
 import { copyKitAction, deleteKitAction, getKitsData, togglePinKitAction } from "@/lib/actions";
 import { Button, cn, EmptyState, formatDate, Spinner, useToast } from "@/components/ui";
 
@@ -140,8 +140,8 @@ function KitsInner() {
         <div className="space-y-7">
           {pinned.length > 0 && (
             <div>
-              <p className="mb-2.5 text-xs font-bold uppercase tracking-widest text-ink/40 dark:text-cream/40">
-                📌 Pinned
+              <p className="mb-2.5 flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-ink/40 dark:text-cream/40">
+                <Pin size={12} /> Pinned
               </p>
               <div className="space-y-3">
                 {pinned.map((k) => (
@@ -163,7 +163,11 @@ function KitsInner() {
                         <span className="inline-flex items-center gap-1">
                           <MessageCircleQuestion size={12} /> {k.questionCount} questions
                         </span>
-                        {k.sourceName && <span className="truncate">📄 {k.sourceName}</span>}
+                        {k.sourceName && (
+                          <span className="inline-flex items-center gap-1 truncate">
+                            <FileText size={12} /> {k.sourceName}
+                          </span>
+                        )}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -211,7 +215,11 @@ function KitsInner() {
                         <span className="inline-flex items-center gap-1">
                           <MessageCircleQuestion size={12} /> {k.questionCount} questions
                         </span>
-                        {k.sourceName && <span className="truncate">📄 {k.sourceName}</span>}
+                        {k.sourceName && (
+                          <span className="inline-flex items-center gap-1 truncate">
+                            <FileText size={12} /> {k.sourceName}
+                          </span>
+                        )}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">

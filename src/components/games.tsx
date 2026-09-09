@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Check, RotateCcw, Trophy, X } from "lucide-react";
+import { ArrowLeft, Check, CheckCircle2, Gamepad2, Keyboard, Puzzle, RotateCcw, Shuffle, Trophy, X, Zap } from "lucide-react";
 import { Button, cn, ProgressBar, ScoreRing } from "@/components/ui";
 
 export interface GameCard {
@@ -513,11 +513,11 @@ function GameScramble({ cards, onExit }: { cards: GameCard[]; onExit: () => void
 /* ------------------------------- Hub -------------------------------- */
 
 const GAMES = [
-  { id: "match", name: "Match", emoji: "🧩", desc: "Match every term with its definition.", color: "bg-violet-100 dark:bg-violet-500/15" },
-  { id: "quiz", name: "Speed Quiz", emoji: "⚡", desc: "Answer multiple-choice questions fast.", color: "bg-brand-100 dark:bg-brand-500/15" },
-  { id: "truefalse", name: "True or False", emoji: "✅", desc: "Spot the statement that doesn't belong.", color: "bg-green-100 dark:bg-green-500/15" },
-  { id: "typing", name: "Type It", emoji: "⌨️", desc: "Type the term from its definition.", color: "bg-amber-100 dark:bg-amber-500/15" },
-  { id: "scramble", name: "Word Scramble", emoji: "🔤", desc: "Unscramble the letters of each term.", color: "bg-sky-100 dark:bg-sky-500/15" },
+  { id: "match", name: "Match", Icon: Puzzle, desc: "Match every term with its definition.", color: "bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300" },
+  { id: "quiz", name: "Speed Quiz", Icon: Zap, desc: "Answer multiple-choice questions fast.", color: "bg-brand-100 text-ink dark:bg-brand-500/15 dark:text-brand-300" },
+  { id: "truefalse", name: "True or False", Icon: CheckCircle2, desc: "Spot the statement that doesn't belong.", color: "bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-300" },
+  { id: "typing", name: "Type It", Icon: Keyboard, desc: "Type the term from its definition.", color: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300" },
+  { id: "scramble", name: "Word Scramble", Icon: Shuffle, desc: "Unscramble the letters of each term.", color: "bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300" },
 ];
 
 export function GameHub({ cards, onExit }: { cards: GameCard[]; onExit: () => void }) {
@@ -541,7 +541,9 @@ export function GameHub({ cards, onExit }: { cards: GameCard[]; onExit: () => vo
         </Button>
       )}
       <div className="mb-6 text-center">
-        <h2 className="text-2xl font-bold text-ink dark:text-cream">Pick a game 🎮</h2>
+        <h2 className="flex items-center justify-center gap-2 text-2xl font-bold text-ink dark:text-cream">
+          <Gamepad2 size={24} /> Pick a game
+        </h2>
         <p className="mt-1 text-sm text-ink/60 dark:text-cream/60">
           Five quick memory games built from your {cards.length} flashcards.
         </p>
@@ -558,8 +560,8 @@ export function GameHub({ cards, onExit }: { cards: GameCard[]; onExit: () => vo
               onClick={() => setGame(g.id)}
               className="group rounded-3xl border border-ink/10 bg-surface p-5 text-left transition hover:-translate-y-0.5 hover:border-brand-400 hover:shadow-lg dark:border-cream/10 dark:bg-surface-dark"
             >
-              <div className={cn("mb-4 grid h-12 w-12 place-items-center rounded-2xl text-2xl transition group-hover:scale-110", g.color)}>
-                {g.emoji}
+              <div className={cn("mb-4 grid h-12 w-12 place-items-center rounded-2xl transition group-hover:scale-110", g.color)}>
+                <g.Icon size={22} />
               </div>
               <p className="text-base font-bold text-ink dark:text-cream">{g.name}</p>
               <p className="mt-1 text-[13px] leading-relaxed text-ink/60 dark:text-cream/60">{g.desc}</p>

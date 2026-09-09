@@ -12,6 +12,7 @@ import {
   LogOut,
   Menu,
   NotebookPen,
+  Pencil,
   Plus,
   ShieldCheck,
   User,
@@ -154,7 +155,13 @@ export function AppShell({ user, children }: { user: ShellUser; children: React.
                     <p className="truncate text-xs text-ink/50 dark:text-cream/50">{user.email}</p>
                     <div className="mt-1.5 flex flex-wrap gap-1">
                       <span className="inline-flex items-center gap-1 rounded-full bg-brand-100 px-2 py-0.5 text-[11px] font-semibold text-ink dark:bg-brand-500/15 dark:text-brand-300">
-                        {user.role === "educator" ? "🎓 Educator" : user.role === "student" ? "✏️ Student" : "Guest"}
+                        {user.role === "educator" ? (
+                          <><GraduationCap size={11} /> Educator</>
+                        ) : user.role === "student" ? (
+                          <><Pencil size={11} /> Student</>
+                        ) : (
+                          "Guest"
+                        )}
                       </span>
                       {user.isAdmin && (
                         <span className="inline-flex items-center gap-1 rounded-full bg-ink px-2 py-0.5 text-[11px] font-semibold text-brand-300 dark:bg-cream dark:text-ink">

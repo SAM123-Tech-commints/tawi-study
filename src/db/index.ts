@@ -233,9 +233,34 @@ const BOOTSTRAP_STATEMENTS = [
     sender_id uuid NOT NULL,
     receiver_id uuid NOT NULL,
     content text NOT NULL,
+    image text,
     read boolean NOT NULL DEFAULT false,
     created_at timestamptz NOT NULL DEFAULT now()
   )`,
+  `ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS image text`,
+  `ALTER TABLE community_messages ADD COLUMN IF NOT EXISTS image text`,
+  `CREATE TABLE IF NOT EXISTS community_groups (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    name text NOT NULL,
+    owner_id uuid NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE TABLE IF NOT EXISTS community_group_members (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    group_id uuid NOT NULL,
+    user_id uuid NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS community_group_members_pair_idx ON community_group_members (group_id, user_id)`,
+  `CREATE TABLE IF NOT EXISTS community_group_messages (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    group_id uuid NOT NULL,
+    sender_id uuid NOT NULL,
+    content text NOT NULL,
+    image text,
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS community_group_messages_group_idx ON community_group_messages (group_id)`,
   `CREATE INDEX IF NOT EXISTS community_messages_pair_idx ON community_messages (sender_id, receiver_id)`,
   `CREATE INDEX IF NOT EXISTS kits_user_idx ON kits (user_id)`,
   `CREATE INDEX IF NOT EXISTS cards_kit_idx ON cards (kit_id)`,

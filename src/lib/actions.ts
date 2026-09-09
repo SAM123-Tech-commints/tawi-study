@@ -10,6 +10,9 @@ import {
   cardProgress,
   classes,
   communityComments,
+  communityGroupMembers,
+  communityGroupMessages,
+  communityGroups,
   communityMessages,
   communityPosts,
   communityReactions,
@@ -1945,6 +1948,7 @@ export async function getCommunityData() {
     const posts = postRows.map((p) => ({
       id: p.id,
       content: p.content,
+      image: (p as { image?: string | null }).image ?? null,
       pinned: p.pinned,
       createdAt: p.createdAt.toISOString(),
       author: shapeAuthor(p.userId),
@@ -2011,7 +2015,10 @@ export async function getCommunityData() {
   });
 }
 
-export async function createPostAction(content: string): Promise<{ ok: boolean; error?: string; id?: string }> {
+export async function createPostAction(
+  content: string,
+  image?: string | null
+): Promise<{ ok: boolean; error?: string; id?: string }> {
   return guard(async () => {
     const user = await getUser();
     const blocked = memberBlocked(user);
@@ -2020,7 +2027,9 @@ export async function createPostAction(content: string): Promise<{ ok: boolean; 
     const text = content.trim();
     if (!text) return { ok: false, error: "Write something to share first." };
     if (text.length > 2000) return { ok: false, error: "Posts are limited to 2000 characters." };
-    const [row] = await db.insert(communityPosts).values({ userId: user!.id, content: text }).returning();
+    const img = checkImage(image);
+    if (typeof img === "string") return { ok: false, error: img };
+    const [row] = await db.insert(communityPosts).values({ userId: user!.id, content: text, image: img }).returning();
     revalidatePath("/workspace");
     return { ok: true, id: row.id };
   });
@@ -2319,6 +2328,14 @@ export async function promoteToAdminAction(userId: string): Promise<{ ok: boolea
 
 /* ============================ FRIEND CHATS ============================ */
 
+/** Validate an uploaded image data URL. Returns null (none), or an error string. */
+function checkImage(image?: string | null): null | string {
+  if (!image) return null;
+  if (typeof image !== "string" || !image.startsWith("data:image/")) return "That file is not a supported image.";
+  if (image.length > 1_400_000) return "Image is too large (max ~1MB).";
+  return null;
+}
+
 async function requireFriend(userId: string, otherId: string) {
   if (userId === otherId) return null;
   const rows = await db
@@ -2376,7 +2393,7 @@ export async function getChatsData() {
         name: u?.name ?? "Former member",
         avatar: u?.avatar ?? null,
         online: u ? isOnline(u) : false,
-        lastMessage: last?.content.slice(0, 80) ?? null,
+        lastMessage: last ? (last.content.trim() ? last.content.slice(0, 80) : "📷 Photo") : null,
         lastAt: last ? last.createdAt.toISOString() : null,
         lastMine: last ? last.senderId === user.id : false,
         unread,
@@ -2416,6 +2433,7 @@ export async function getConversationAction(friendId: string) {
         id: m.id,
         mine: m.senderId === user.id,
         content: m.content,
+        image: (m as { image?: string | null }).image ?? null,
         createdAt: m.createdAt.toISOString(),
       })),
     } as const;
@@ -2425,6 +2443,7 @@ export async function getConversationAction(friendId: string) {
 export async function sendMessageAction(opts: {
   friendId: string;
   content: string;
+  image?: string | null;
 }): Promise<{ ok: boolean; error?: string }> {
   return guard(async () => {
     const user = await getUser();
@@ -2433,10 +2452,216 @@ export async function sendMessageAction(opts: {
     if (blocked) return { ok: false, error: blocked };
     if (user.muted) return { ok: false, error: "An admin has muted you in the community." };
     const text = opts.content.trim().slice(0, 1000);
-    if (!text) return { ok: false, error: "Write a message first." };
+    const imgErr = checkImage(opts.image);
+    if (imgErr) return { ok: false, error: imgErr };
+    if (!text && !opts.image) return { ok: false, error: "Write a message or attach an image first." };
     const rel = await requireFriend(user.id, opts.friendId);
     if (!rel) return { ok: false, error: "You can only chat with friends." };
-    await db.insert(communityMessages).values({ senderId: user.id, receiverId: opts.friendId, content: text });
+    await db.insert(communityMessages).values({ senderId: user.id, receiverId: opts.friendId, content: text, image: opts.image ?? null });
+    return { ok: true };
+  });
+}
+
+/* ============================ GROUP CHATS ============================ */
+
+async function requireGroupMember(userId: string, groupId: string) {
+  const rows = await db
+    .select()
+    .from(communityGroupMembers)
+    .where(and(eq(communityGroupMembers.groupId, groupId), eq(communityGroupMembers.userId, userId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getGroupsData() {
+  return guardRead(async () => {
+    const user = await getUser();
+    if (!user) return null;
+    const memberships = await db
+      .select()
+      .from(communityGroupMembers)
+      .where(eq(communityGroupMembers.userId, user.id));
+    if (!memberships.length) return { groups: [] };
+    const gids = memberships.map((m) => m.groupId);
+    const [groupRows, memberRows, msgRows] = await Promise.all([
+      db.select().from(communityGroups).where(inArray(communityGroups.id, gids)),
+      db.select().from(communityGroupMembers).where(inArray(communityGroupMembers.groupId, gids)),
+      db.select().from(communityGroupMessages).where(inArray(communityGroupMessages.groupId, gids)).orderBy(desc(communityGroupMessages.createdAt)).limit(300),
+    ]);
+    const userIds = [...new Set(memberRows.map((m) => m.userId))];
+    const usersRows = userIds.length ? await db.select().from(users).where(inArray(users.id, userIds)) : [];
+    const byId = new Map(usersRows.map((u) => [u.id, u]));
+    const groups = groupRows.map((g) => {
+      const members = memberRows
+        .filter((m) => m.groupId === g.id)
+        .map((m) => {
+          const u = byId.get(m.userId);
+          return { id: m.userId, name: u?.name ?? "Former member", avatar: u?.avatar ?? null };
+        });
+      const thread = msgRows.filter((m) => m.groupId === g.id);
+      const last = thread[0] ?? null;
+      return {
+        id: g.id,
+        name: g.name,
+        ownerId: g.ownerId,
+        isOwner: g.ownerId === user.id,
+        createdAt: g.createdAt.toISOString(),
+        members,
+        lastMessage: last?.content.slice(0, 80) ?? null,
+        lastAt: last ? last.createdAt.toISOString() : null,
+      };
+    });
+    groups.sort((a, b) => (b.lastAt ?? "").localeCompare(a.lastAt ?? ""));
+    return { groups };
+  });
+}
+
+export async function createGroupAction(opts: {
+  name: string;
+  memberIds: string[];
+}): Promise<{ ok: boolean; error?: string; id?: string }> {
+  return guard(async () => {
+    const user = await getUser();
+    if (!user) return { ok: false, error: authError() };
+    const blocked = memberBlocked(user);
+    if (blocked) return { ok: false, error: blocked };
+    if (user.muted) return { ok: false, error: "An admin has muted you in the community." };
+    const name = opts.name.trim().slice(0, 60);
+    if (name.length < 2) return { ok: false, error: "Give your group a name." };
+    // Invites only go to accepted friends.
+    const rels = await db
+      .select()
+      .from(friendships)
+      .where(
+        and(
+          or(eq(friendships.requesterId, user.id), eq(friendships.addresseeId, user.id)),
+          eq(friendships.status, "accepted")
+        )
+      );
+    const friendIds = new Set(rels.map((r) => (r.requesterId === user.id ? r.addresseeId : r.requesterId)));
+    const invited = [...new Set(opts.memberIds)].filter((id) => id !== user.id && friendIds.has(id)).slice(0, 30);
+    if (!invited.length) return { ok: false, error: "Invite at least one friend to start a group." };
+    const [group] = await db.insert(communityGroups).values({ name, ownerId: user.id }).returning();
+    await db.insert(communityGroupMembers).values([
+      { groupId: group.id, userId: user.id },
+      ...invited.map((id) => ({ groupId: group.id, userId: id })),
+    ]);
+    revalidatePath("/workspace");
+    return { ok: true, id: group.id };
+  });
+}
+
+export async function inviteToGroupAction(opts: {
+  groupId: string;
+  userId: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  return guard(async () => {
+    const user = await getUser();
+    if (!user) return { ok: false, error: authError() };
+    const blocked = memberBlocked(user);
+    if (blocked) return { ok: false, error: blocked };
+    const membership = await requireGroupMember(user.id, opts.groupId);
+    if (!membership) return { ok: false, error: "You're not in this group." };
+    if (opts.userId === user.id) return { ok: false, error: "That's you!" };
+    const rel = await requireFriend(user.id, opts.userId);
+    if (!rel) return { ok: false, error: "You can only invite friends." };
+    const [target] = await db.select().from(users).where(eq(users.id, opts.userId)).limit(1);
+    if (!target || target.isGuest) return { ok: false, error: "That member can't join groups." };
+    await db
+      .insert(communityGroupMembers)
+      .values({ groupId: opts.groupId, userId: opts.userId })
+      .onConflictDoNothing();
+    return { ok: true };
+  });
+}
+
+export async function leaveGroupAction(groupId: string): Promise<{ ok: boolean; error?: string }> {
+  return guard(async () => {
+    const user = await getUser();
+    if (!user) return { ok: false, error: authError() };
+    await db
+      .delete(communityGroupMembers)
+      .where(and(eq(communityGroupMembers.groupId, groupId), eq(communityGroupMembers.userId, user.id)));
+    // Owner leaving with nobody else around deletes the group shell.
+    const [group] = await db.select().from(communityGroups).where(eq(communityGroups.id, groupId)).limit(1);
+    if (group && group.ownerId === user.id) {
+      const rest = await db.select().from(communityGroupMembers).where(eq(communityGroupMembers.groupId, groupId));
+      if (!rest.length) {
+        await db.delete(communityGroupMessages).where(eq(communityGroupMessages.groupId, groupId));
+        await db.delete(communityGroups).where(eq(communityGroups.id, groupId));
+      }
+    }
+    revalidatePath("/workspace");
+    return { ok: true };
+  });
+}
+
+export async function deleteGroupAction(groupId: string): Promise<{ ok: boolean; error?: string }> {
+  return guard(async () => {
+    const user = await getUser();
+    if (!user) return { ok: false, error: authError() };
+    const [group] = await db.select().from(communityGroups).where(eq(communityGroups.id, groupId)).limit(1);
+    if (!group) return { ok: false, error: "Group not found." };
+    if (group.ownerId !== user.id && !isAdminUser(user)) {
+      return { ok: false, error: "Only the group owner can delete it." };
+    }
+    await db.delete(communityGroupMessages).where(eq(communityGroupMessages.groupId, groupId));
+    await db.delete(communityGroupMembers).where(eq(communityGroupMembers.groupId, groupId));
+    await db.delete(communityGroups).where(eq(communityGroups.id, groupId));
+    revalidatePath("/workspace");
+    return { ok: true };
+  });
+}
+
+export async function getGroupMessagesAction(groupId: string) {
+  return guard(async () => {
+    const user = await getUser();
+    if (!user) return { ok: false, error: authError() } as const;
+    if (user.isGuest) return { ok: false, error: GUEST_MESSAGE } as const;
+    const membership = await requireGroupMember(user.id, groupId);
+    if (!membership) return { ok: false, error: "You're not in this group." } as const;
+    const rows = await db
+      .select()
+      .from(communityGroupMessages)
+      .where(eq(communityGroupMessages.groupId, groupId))
+      .orderBy(asc(communityGroupMessages.createdAt))
+      .limit(200);
+    const senderIds = [...new Set(rows.map((m) => m.senderId))];
+    const senders = senderIds.length ? await db.select().from(users).where(inArray(users.id, senderIds)) : [];
+    const byId = new Map(senders.map((u) => [u.id, u]));
+    return {
+      ok: true,
+      messages: rows.map((m) => ({
+        id: m.id,
+        mine: m.senderId === user.id,
+        senderName: byId.get(m.senderId)?.name ?? "Former member",
+        senderAvatar: byId.get(m.senderId)?.avatar ?? null,
+        content: m.content,
+        image: (m as { image?: string | null }).image ?? null,
+        createdAt: m.createdAt.toISOString(),
+      })),
+    } as const;
+  });
+}
+
+export async function sendGroupMessageAction(opts: {
+  groupId: string;
+  content: string;
+  image?: string | null;
+}): Promise<{ ok: boolean; error?: string }> {
+  return guard(async () => {
+    const user = await getUser();
+    if (!user) return { ok: false, error: authError() };
+    const blocked = memberBlocked(user);
+    if (blocked) return { ok: false, error: blocked };
+    if (user.muted) return { ok: false, error: "An admin has muted you in the community." };
+    const membership = await requireGroupMember(user.id, opts.groupId);
+    if (!membership) return { ok: false, error: "You're not in this group." };
+    const text = opts.content.trim().slice(0, 1000);
+    const imgErr = checkImage(opts.image);
+    if (imgErr) return { ok: false, error: imgErr };
+    if (!text && !opts.image) return { ok: false, error: "Write a message or attach an image first." };
+    await db.insert(communityGroupMessages).values({ groupId: opts.groupId, senderId: user.id, content: text, image: opts.image ?? null });
     return { ok: true };
   });
 }
