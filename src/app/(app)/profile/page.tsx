@@ -2,8 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Camera, Check, Copy, KeyRound, LogOut, RefreshCw, Settings2, Trash2, User } from "lucide-react";
-import { Avatar, Button, Card, Field, Input, Spinner, useToast } from "@/components/ui";
+import { Camera, Check, Copy, EyeOff, KeyRound, LogOut, RefreshCw, Settings2, Trash2, User, Users } from "lucide-react";
+import { Avatar, Button, Card, cn, Field, Input, Spinner, Textarea, useToast } from "@/components/ui";
 import { ACCENTS, applyAccent, applyTheme } from "@/components/theme";
 import {
   getApiKeyAction,
@@ -19,6 +19,15 @@ import {
   updateSettingsAction,
 } from "@/lib/actions";
 
+/** Cover-banner gradients keyed by accent id (mirrors the community profile card). */
+const BANNER_GRADIENTS: Record<string, string> = {
+  lime: "from-brand-300 to-brand-500",
+  violet: "from-violet-300 to-violet-500",
+  sky: "from-sky-300 to-sky-500",
+  amber: "from-amber-300 to-amber-500",
+  rose: "from-rose-300 to-rose-500",
+};
+
 export default function ProfilePage() {
   const router = useRouter();
   const { toast } = useToast();
@@ -28,6 +37,11 @@ export default function ProfilePage() {
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("student");
   const [institution, setInstitution] = useState("");
+  const [bio, setBio] = useState("");
+  const [course, setCourse] = useState("");
+  const [yearLevel, setYearLevel] = useState("");
+  const [banner, setBanner] = useState("lime");
+  const [appearOffline, setAppearOffline] = useState(false);
   const [avatar, setAvatar] = useState<string | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [apiKey, setApiKey] = useState<string | null>(null);
@@ -57,6 +71,11 @@ export default function ProfilePage() {
     setEmail(profile.email);
     setRole(profile.role ?? "student");
     setInstitution(profile.institution ?? "");
+    setBio(profile.bio ?? "");
+    setCourse(profile.course ?? "");
+    setYearLevel(profile.yearLevel ?? "");
+    setBanner(profile.banner ?? "lime");
+    setAppearOffline(profile.appearOffline);
     setAvatar(av ?? profile.avatar);
     if (settings) {
       setTimerEnabled(settings.timerEnabled);
@@ -79,7 +98,16 @@ export default function ProfilePage() {
 
   const saveAccount = async () => {
     setSaving(true);
-    const res = await updateProfileAction({ name, role, institution });
+    const res = await updateProfileAction({
+      name,
+      role,
+      institution,
+      bio,
+      course,
+      yearLevel,
+      banner,
+      appearOffline,
+    });
     setSaving(false);
     if (res.ok) {
       toast("Profile updated ✨");
@@ -271,6 +299,102 @@ export default function ProfilePage() {
             placeholder="e.g. University of the Philippines"
           />
         </Field>
+        <Button onClick={saveAccount} disabled={saving || name.trim().length < 2}>
+          {saving ? <Spinner className="border-ink/30 border-t-ink" /> : <Check size={15} />} Save profile
+        </Button>
+      </Card>
+
+      {/* Community profile */}
+      <Card className="space-y-4 p-6">
+        <h2 className="flex items-center gap-2 text-lg font-bold text-ink dark:text-cream">
+          <Users size={18} /> Community profile
+        </h2>
+        <p className="text-[13px] text-ink/55 dark:text-cream/55">
+          This is what other members see when they open your profile in the Workspace community.
+        </p>
+
+        {/* Live preview */}
+        <div>
+          <div className={cn("h-20 rounded-2xl bg-gradient-to-br", BANNER_GRADIENTS[banner] ?? BANNER_GRADIENTS.lime)} />
+          <div className="-mt-8 ml-5 mb-1 inline-block rounded-full ring-4 ring-surface dark:ring-surface-dark">
+            {avatar ? (
+              <img src={avatar} alt="" className="h-16 w-16 rounded-full object-cover" />
+            ) : (
+              <Avatar name={name || email} size={64} />
+            )}
+          </div>
+        </div>
+
+        <Field label="Profile banner" hint="The cover color at the top of your community profile card.">
+          <div className="flex flex-wrap gap-2.5">
+            {ACCENTS.map((a) => (
+              <button
+                key={a.id}
+                onClick={() => setBanner(a.id)}
+                title={a.label}
+                aria-label={`${a.label} banner`}
+                className={cn(
+                  "h-10 w-16 rounded-xl bg-gradient-to-br transition hover:scale-105 active:scale-95",
+                  BANNER_GRADIENTS[a.id],
+                  banner === a.id
+                    ? "ring-2 ring-ink ring-offset-2 dark:ring-cream dark:ring-offset-surface-dark"
+                    : "ring-1 ring-ink/10 dark:ring-cream/15"
+                )}
+              />
+            ))}
+          </div>
+        </Field>
+
+        <Field label="Bio / About me" hint="A short intro shown on your profile. Up to 300 characters.">
+          <Textarea
+            value={bio}
+            onChange={(e) => setBio(e.target.value)}
+            rows={3}
+            maxLength={300}
+            placeholder="Tell the community a bit about yourself…"
+          />
+        </Field>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Course">
+            <Input value={course} onChange={(e) => setCourse(e.target.value)} placeholder="e.g. BSIT" maxLength={60} />
+          </Field>
+          <Field label="Year level">
+            <Input
+              value={yearLevel}
+              onChange={(e) => setYearLevel(e.target.value)}
+              placeholder="e.g. 2nd year"
+              maxLength={40}
+            />
+          </Field>
+        </div>
+
+        <div className="flex items-center justify-between gap-3 rounded-2xl bg-ink/4 p-3.5 dark:bg-cream/5">
+          <div>
+            <p className="flex items-center gap-1.5 text-sm font-bold text-ink dark:text-cream">
+              <EyeOff size={14} /> Appear offline
+            </p>
+            <p className="text-xs text-ink/55 dark:text-cream/55">
+              Hide your green “online” dot from other members. You can still post, comment and react.
+            </p>
+          </div>
+          <button
+            onClick={() => setAppearOffline((v) => !v)}
+            className={cn(
+              "relative h-7 w-12 shrink-0 rounded-full transition",
+              appearOffline ? "bg-brand-500" : "bg-ink/15 dark:bg-cream/20"
+            )}
+            aria-label="Toggle appear offline"
+          >
+            <span
+              className={cn(
+                "absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-all",
+                appearOffline ? "left-6" : "left-1"
+              )}
+            />
+          </button>
+        </div>
+
         <Button onClick={saveAccount} disabled={saving || name.trim().length < 2}>
           {saving ? <Spinner className="border-ink/30 border-t-ink" /> : <Check size={15} />} Save profile
         </Button>

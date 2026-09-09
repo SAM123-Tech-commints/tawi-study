@@ -19,9 +19,56 @@ export const users = pgTable("users", {
   avatar: text("avatar"), // base64 data URL or null
   settings: jsonb("settings"), // { theme, timerWork, timerBreak, timerLongBreak, timerRounds, language, timerEnabled }
   apiKey: text("api_key"), // for external AI services
+  // --- Community / social profile ---
+  bio: text("bio"), // short "about me" shown on the profile preview card
+  course: text("course"), // e.g. "BSIT"
+  yearLevel: text("year_level"), // e.g. "2nd year"
+  banner: text("banner"), // accent id for the profile cover banner (lime|violet|sky|amber|rose)
+  appearOffline: boolean("appear_offline").notNull().default(false),
+  lastSeen: timestamp("last_seen", { withTimezone: true }), // presence heartbeat
+  muted: boolean("muted").notNull().default(false), // admin-muted from the community
   isGuest: boolean("is_guest").notNull().default(false),
   isAdmin: boolean("is_admin").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/* ============================== COMMUNITY ============================== */
+
+/** A post in the shared community feed. Any member can author one. */
+export const communityPosts = pgTable("community_posts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull(),
+  content: text("content").notNull(),
+  pinned: boolean("pinned").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** One reaction per member per post (Messenger-style — emoji can be changed). */
+export const communityReactions = pgTable("community_reactions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  postId: uuid("post_id").notNull(),
+  userId: uuid("user_id").notNull(),
+  emoji: text("emoji").notNull(), // 👍 ❤️ 😂 😮 😢 👏
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** A comment on a community post. */
+export const communityComments = pgTable("community_comments", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  postId: uuid("post_id").notNull(),
+  userId: uuid("user_id").notNull(),
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Friendship / friend-request edge. status: pending | accepted. */
+export const friendships = pgTable("friendships", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  requesterId: uuid("requester_id").notNull(),
+  addresseeId: uuid("addressee_id").notNull(),
+  status: text("status").notNull().default("pending"), // pending | accepted
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const classes = pgTable("classes", {
@@ -181,3 +228,7 @@ export type Attempt = typeof attempts.$inferSelect;
 export type CalEvent = typeof events.$inferSelect;
 export type TaskRow = typeof tasks.$inferSelect;
 export type DocRow = typeof documents.$inferSelect;
+export type CommunityPost = typeof communityPosts.$inferSelect;
+export type CommunityReaction = typeof communityReactions.$inferSelect;
+export type CommunityComment = typeof communityComments.$inferSelect;
+export type Friendship = typeof friendships.$inferSelect;

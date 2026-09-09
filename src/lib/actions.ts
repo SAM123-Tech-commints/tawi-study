@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or } from "drizzle-orm";
 import { db, isDatabaseConfigured } from "@/db";
 import {
   assignmentQuestions,
@@ -9,8 +9,12 @@ import {
   cards,
   cardProgress,
   classes,
+  communityComments,
+  communityPosts,
+  communityReactions,
   documents,
   events,
+  friendships,
   kitQuestions,
   kits,
   assignments,
@@ -290,6 +294,11 @@ export async function getProfileAction(): Promise<{
   role: string | null;
   institution: string | null;
   avatar: string | null;
+  bio: string | null;
+  course: string | null;
+  yearLevel: string | null;
+  banner: string | null;
+  appearOffline: boolean;
   isAdmin: boolean;
   isGuest: boolean;
 } | null> {
@@ -302,6 +311,11 @@ export async function getProfileAction(): Promise<{
       role: user.role,
       institution: user.institution,
       avatar: (user as { avatar?: string | null }).avatar ?? null,
+      bio: user.bio ?? null,
+      course: user.course ?? null,
+      yearLevel: user.yearLevel ?? null,
+      banner: user.banner ?? null,
+      appearOffline: user.appearOffline ?? false,
       isAdmin: isAdminUser(user),
       isGuest: user.isGuest,
     };
@@ -312,12 +326,26 @@ export async function updateProfileAction(opts: {
   name?: string;
   role?: string;
   institution?: string;
+  bio?: string;
+  course?: string;
+  yearLevel?: string;
+  banner?: string;
+  appearOffline?: boolean;
 }): Promise<{ ok: boolean; error?: string }> {
   return guard(async () => {
     const user = await getUser();
     if (!user) return { ok: false, error: authError() };
     if (user.isGuest) return { ok: false, error: GUEST_MESSAGE };
-    const patch: { name?: string; role?: string | null; institution?: string | null } = {};
+    const patch: {
+      name?: string;
+      role?: string | null;
+      institution?: string | null;
+      bio?: string | null;
+      course?: string | null;
+      yearLevel?: string | null;
+      banner?: string | null;
+      appearOffline?: boolean;
+    } = {};
     if (opts.name !== undefined) {
       const name = opts.name.trim();
       if (name.length < 2) return { ok: false, error: "Please enter your name." };
@@ -328,8 +356,17 @@ export async function updateProfileAction(opts: {
       patch.role = opts.role;
     }
     if (opts.institution !== undefined) patch.institution = opts.institution.trim().slice(0, 120) || null;
+    if (opts.bio !== undefined) patch.bio = opts.bio.trim().slice(0, 300) || null;
+    if (opts.course !== undefined) patch.course = opts.course.trim().slice(0, 60) || null;
+    if (opts.yearLevel !== undefined) patch.yearLevel = opts.yearLevel.trim().slice(0, 40) || null;
+    if (opts.banner !== undefined) {
+      patch.banner = ["lime", "violet", "sky", "amber", "rose"].includes(opts.banner) ? opts.banner : null;
+    }
+    if (opts.appearOffline !== undefined) patch.appearOffline = !!opts.appearOffline;
     if (!Object.keys(patch).length) return { ok: true };
     await db.update(users).set(patch).where(eq(users.id, user.id));
+    revalidatePath("/profile");
+    revalidatePath("/workspace");
     return { ok: true };
   });
 }
@@ -1799,6 +1836,482 @@ export async function deleteDocAction(id: string): Promise<{ ok: boolean; error?
     const blocked = memberBlocked(user);
     if (blocked) return { ok: false, error: blocked };
     await db.delete(documents).where(and(eq(documents.id, id), eq(documents.userId, user!.id)));
+    return { ok: true };
+  });
+}
+
+/* ============================== COMMUNITY =========================== */
+/*  A shared social feed inside the workspace: posts, Messenger-style emoji
+ *  reactions, threaded comments, a friend system with live presence, and
+ *  admin moderation (pin, mute, remove, promote, delete anything).        */
+
+const REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "👏"] as const;
+type ReactionEmoji = (typeof REACTIONS)[number];
+
+/** How long after the last heartbeat a member still counts as "online". */
+const ONLINE_WINDOW_MS = 2 * 60 * 1000;
+
+type PresenceUser = { lastSeen: Date | null; appearOffline: boolean };
+function isOnline(u: PresenceUser): boolean {
+  if (u.appearOffline) return false;
+  if (!u.lastSeen) return false;
+  return Date.now() - new Date(u.lastSeen).getTime() < ONLINE_WINDOW_MS;
+}
+
+type FriendState = "self" | "friends" | "incoming" | "outgoing" | "none";
+
+/** Lightweight presence ping — the client calls this on an interval so the
+ *  member shows up as online without refetching the whole feed. */
+export async function heartbeatAction(): Promise<{ ok: boolean }> {
+  return guard(async () => {
+    const user = await getUser();
+    if (!user) return { ok: false };
+    await db.update(users).set({ lastSeen: new Date() }).where(eq(users.id, user.id));
+    return { ok: true };
+  });
+}
+
+/** Everything the Community tab needs in one round-trip. */
+export async function getCommunityData() {
+  return guardRead(async () => {
+    const me = await getUser();
+    if (!me) return null;
+
+    const meIsAdmin = isAdminUser(me);
+
+    const [postRows, allUsers, myFriendships] = await Promise.all([
+      db
+        .select()
+        .from(communityPosts)
+        .orderBy(desc(communityPosts.pinned), desc(communityPosts.createdAt))
+        .limit(100),
+      db.select().from(users).limit(500),
+      db
+        .select()
+        .from(friendships)
+        .where(or(eq(friendships.requesterId, me.id), eq(friendships.addresseeId, me.id))),
+      // Heartbeat myself in the same round-trip (result ignored).
+      db.update(users).set({ lastSeen: new Date() }).where(eq(users.id, me.id)),
+    ]);
+
+    const postIds = postRows.map((p) => p.id);
+    const [reactionRows, commentRows] = postIds.length
+      ? await Promise.all([
+          db.select().from(communityReactions).where(inArray(communityReactions.postId, postIds)),
+          db
+            .select()
+            .from(communityComments)
+            .where(inArray(communityComments.postId, postIds))
+            .orderBy(asc(communityComments.createdAt)),
+        ])
+      : [[], []];
+
+    const userById = new Map(allUsers.map((u) => [u.id, u]));
+
+    const shapeAuthor = (uid: string) => {
+      const u = userById.get(uid);
+      if (!u) {
+        return { id: uid, name: "Former member", avatar: null, role: null, isAdmin: false, online: false };
+      }
+      return {
+        id: u.id,
+        name: u.name,
+        avatar: u.avatar ?? null,
+        role: u.role,
+        isAdmin: isAdminUser(u),
+        online: u.id === me.id ? !me.appearOffline : isOnline(u),
+      };
+    };
+
+    // Reactions grouped into { emoji: count } per post, plus my own choice.
+    const reactionsByPost = new Map<string, Record<string, number>>();
+    const myReactionByPost = new Map<string, string>();
+    for (const r of reactionRows) {
+      const bucket = reactionsByPost.get(r.postId) ?? {};
+      bucket[r.emoji] = (bucket[r.emoji] ?? 0) + 1;
+      reactionsByPost.set(r.postId, bucket);
+      if (r.userId === me.id) myReactionByPost.set(r.postId, r.emoji);
+    }
+
+    // Comments grouped per post (kept in chronological order).
+    const commentsByPost = new Map<string, typeof commentRows>();
+    for (const c of commentRows) {
+      const arr = commentsByPost.get(c.postId);
+      if (arr) arr.push(c);
+      else commentsByPost.set(c.postId, [c]);
+    }
+
+    const posts = postRows.map((p) => ({
+      id: p.id,
+      content: p.content,
+      pinned: p.pinned,
+      createdAt: p.createdAt.toISOString(),
+      author: shapeAuthor(p.userId),
+      reactions: reactionsByPost.get(p.id) ?? {},
+      myReaction: myReactionByPost.get(p.id) ?? null,
+      canDelete: p.userId === me.id || meIsAdmin,
+      comments: (commentsByPost.get(p.id) ?? []).map((c) => ({
+        id: c.id,
+        content: c.content,
+        createdAt: c.createdAt.toISOString(),
+        author: shapeAuthor(c.userId),
+        canDelete: c.userId === me.id || meIsAdmin,
+      })),
+    }));
+
+    // Resolve my friendships into friends / incoming / outgoing + a lookup.
+    const friendIds = new Set<string>();
+    const incomingIds: string[] = [];
+    const outgoingIds = new Set<string>();
+    const stateByUser = new Map<string, FriendState>();
+    for (const f of myFriendships) {
+      const other = f.requesterId === me.id ? f.addresseeId : f.requesterId;
+      if (f.status === "accepted") {
+        friendIds.add(other);
+        stateByUser.set(other, "friends");
+      } else if (f.addresseeId === me.id) {
+        incomingIds.push(f.requesterId);
+        if (!stateByUser.has(other)) stateByUser.set(other, "incoming");
+      } else {
+        outgoingIds.add(other);
+        if (!stateByUser.has(other)) stateByUser.set(other, "outgoing");
+      }
+    }
+
+    const byPresenceThenName = (a: { online: boolean; name: string }, b: { online: boolean; name: string }) =>
+      Number(b.online) - Number(a.online) || a.name.localeCompare(b.name);
+
+    const friends = [...friendIds].map(shapeAuthor).sort(byPresenceThenName);
+    const incoming = incomingIds.map(shapeAuthor);
+    const people = allUsers
+      .filter((u) => u.id !== me.id && !u.isGuest)
+      .map((u) => ({ ...shapeAuthor(u.id), friendState: stateByUser.get(u.id) ?? ("none" as FriendState) }))
+      .sort(byPresenceThenName);
+
+    return {
+      me: {
+        id: me.id,
+        name: me.name,
+        avatar: me.avatar ?? null,
+        role: me.role,
+        isAdmin: meIsAdmin,
+        isGuest: me.isGuest,
+        muted: me.muted ?? false,
+        appearOffline: me.appearOffline ?? false,
+      },
+      posts,
+      friends,
+      incoming,
+      outgoingCount: outgoingIds.size,
+      people,
+      onlineCount: people.filter((p) => p.online).length,
+      reactionEmojis: [...REACTIONS],
+    };
+  });
+}
+
+export async function createPostAction(content: string): Promise<{ ok: boolean; error?: string; id?: string }> {
+  return guard(async () => {
+    const user = await getUser();
+    const blocked = memberBlocked(user);
+    if (blocked) return { ok: false, error: blocked };
+    if (user!.muted) return { ok: false, error: "You've been muted by an admin and can't post right now." };
+    const text = content.trim();
+    if (!text) return { ok: false, error: "Write something to share first." };
+    if (text.length > 2000) return { ok: false, error: "Posts are limited to 2000 characters." };
+    const [row] = await db.insert(communityPosts).values({ userId: user!.id, content: text }).returning();
+    revalidatePath("/workspace");
+    return { ok: true, id: row.id };
+  });
+}
+
+export async function deletePostAction(postId: string): Promise<{ ok: boolean; error?: string }> {
+  return guard(async () => {
+    const user = await getUser();
+    if (!user) return { ok: false, error: authError() };
+    const [post] = await db.select().from(communityPosts).where(eq(communityPosts.id, postId)).limit(1);
+    if (!post) return { ok: false, error: "That post no longer exists." };
+    if (post.userId !== user.id && !isAdminUser(user)) {
+      return { ok: false, error: "You can only delete your own posts." };
+    }
+    await db.delete(communityReactions).where(eq(communityReactions.postId, postId));
+    await db.delete(communityComments).where(eq(communityComments.postId, postId));
+    await db.delete(communityPosts).where(eq(communityPosts.id, postId));
+    revalidatePath("/workspace");
+    return { ok: true };
+  });
+}
+
+export async function togglePinPostAction(postId: string): Promise<{ ok: boolean; error?: string; pinned?: boolean }> {
+  return guard(async () => {
+    const user = await getUser();
+    if (!user) return { ok: false, error: authError() };
+    if (!isAdminUser(user)) return { ok: false, error: "Only admins can pin announcements." };
+    const [post] = await db.select().from(communityPosts).where(eq(communityPosts.id, postId)).limit(1);
+    if (!post) return { ok: false, error: "That post no longer exists." };
+    const pinned = !post.pinned;
+    await db.update(communityPosts).set({ pinned }).where(eq(communityPosts.id, postId));
+    revalidatePath("/workspace");
+    return { ok: true, pinned };
+  });
+}
+
+export async function reactToPostAction(opts: { postId: string; emoji: string }): Promise<{ ok: boolean; error?: string }> {
+  return guard(async () => {
+    const user = await getUser();
+    const blocked = memberBlocked(user);
+    if (blocked) return { ok: false, error: blocked };
+    if (user!.muted) return { ok: false, error: "You've been muted by an admin." };
+    if (!REACTIONS.includes(opts.emoji as ReactionEmoji)) return { ok: false, error: "Unknown reaction." };
+    const [post] = await db.select().from(communityPosts).where(eq(communityPosts.id, opts.postId)).limit(1);
+    if (!post) return { ok: false, error: "That post no longer exists." };
+    const [existing] = await db
+      .select()
+      .from(communityReactions)
+      .where(and(eq(communityReactions.postId, opts.postId), eq(communityReactions.userId, user!.id)))
+      .limit(1);
+    if (existing) {
+      if (existing.emoji === opts.emoji) {
+        // Tapping the same reaction again removes it (toggle off).
+        await db.delete(communityReactions).where(eq(communityReactions.id, existing.id));
+      } else {
+        await db.update(communityReactions).set({ emoji: opts.emoji }).where(eq(communityReactions.id, existing.id));
+      }
+    } else {
+      await db.insert(communityReactions).values({ postId: opts.postId, userId: user!.id, emoji: opts.emoji });
+    }
+    revalidatePath("/workspace");
+    return { ok: true };
+  });
+}
+
+export async function addCommentAction(opts: { postId: string; content: string }): Promise<{ ok: boolean; error?: string }> {
+  return guard(async () => {
+    const user = await getUser();
+    const blocked = memberBlocked(user);
+    if (blocked) return { ok: false, error: blocked };
+    if (user!.muted) return { ok: false, error: "You've been muted by an admin." };
+    const text = opts.content.trim();
+    if (!text) return { ok: false, error: "Write a comment first." };
+    if (text.length > 1000) return { ok: false, error: "Comments are limited to 1000 characters." };
+    const [post] = await db.select().from(communityPosts).where(eq(communityPosts.id, opts.postId)).limit(1);
+    if (!post) return { ok: false, error: "That post no longer exists." };
+    await db.insert(communityComments).values({ postId: opts.postId, userId: user!.id, content: text });
+    revalidatePath("/workspace");
+    return { ok: true };
+  });
+}
+
+export async function deleteCommentAction(commentId: string): Promise<{ ok: boolean; error?: string }> {
+  return guard(async () => {
+    const user = await getUser();
+    if (!user) return { ok: false, error: authError() };
+    const [comment] = await db.select().from(communityComments).where(eq(communityComments.id, commentId)).limit(1);
+    if (!comment) return { ok: false, error: "That comment no longer exists." };
+    if (comment.userId !== user.id && !isAdminUser(user)) {
+      return { ok: false, error: "You can only delete your own comments." };
+    }
+    await db.delete(communityComments).where(eq(communityComments.id, commentId));
+    revalidatePath("/workspace");
+    return { ok: true };
+  });
+}
+
+/* ------------------------------- friends ------------------------------- */
+
+export async function sendFriendRequestAction(targetId: string): Promise<{ ok: boolean; error?: string; status?: FriendState }> {
+  return guard(async () => {
+    const user = await getUser();
+    const blocked = memberBlocked(user);
+    if (blocked) return { ok: false, error: blocked };
+    if (targetId === user!.id) return { ok: false, error: "You can't add yourself." };
+    const [target] = await db.select().from(users).where(eq(users.id, targetId)).limit(1);
+    if (!target || target.isGuest) return { ok: false, error: "That person isn't available to add." };
+    const [existing] = await db
+      .select()
+      .from(friendships)
+      .where(
+        or(
+          and(eq(friendships.requesterId, user!.id), eq(friendships.addresseeId, targetId)),
+          and(eq(friendships.requesterId, targetId), eq(friendships.addresseeId, user!.id))
+        )
+      )
+      .limit(1);
+    if (existing) {
+      if (existing.status === "accepted") return { ok: true, status: "friends" };
+      if (existing.addresseeId === user!.id) {
+        // They already asked me → sending back instantly accepts.
+        await db
+          .update(friendships)
+          .set({ status: "accepted", updatedAt: new Date() })
+          .where(eq(friendships.id, existing.id));
+        revalidatePath("/workspace");
+        return { ok: true, status: "friends" };
+      }
+      return { ok: true, status: "outgoing" };
+    }
+    await db.insert(friendships).values({ requesterId: user!.id, addresseeId: targetId, status: "pending" });
+    revalidatePath("/workspace");
+    return { ok: true, status: "outgoing" };
+  });
+}
+
+export async function respondFriendRequestAction(opts: {
+  requesterId: string;
+  accept: boolean;
+}): Promise<{ ok: boolean; error?: string }> {
+  return guard(async () => {
+    const user = await getUser();
+    const blocked = memberBlocked(user);
+    if (blocked) return { ok: false, error: blocked };
+    const [req] = await db
+      .select()
+      .from(friendships)
+      .where(
+        and(
+          eq(friendships.requesterId, opts.requesterId),
+          eq(friendships.addresseeId, user!.id),
+          eq(friendships.status, "pending")
+        )
+      )
+      .limit(1);
+    if (!req) return { ok: false, error: "This request is no longer available." };
+    if (opts.accept) {
+      await db.update(friendships).set({ status: "accepted", updatedAt: new Date() }).where(eq(friendships.id, req.id));
+    } else {
+      await db.delete(friendships).where(eq(friendships.id, req.id));
+    }
+    revalidatePath("/workspace");
+    return { ok: true };
+  });
+}
+
+export async function removeFriendAction(otherId: string): Promise<{ ok: boolean; error?: string }> {
+  return guard(async () => {
+    const user = await getUser();
+    const blocked = memberBlocked(user);
+    if (blocked) return { ok: false, error: blocked };
+    await db.delete(friendships).where(
+      or(
+        and(eq(friendships.requesterId, user!.id), eq(friendships.addresseeId, otherId)),
+        and(eq(friendships.requesterId, otherId), eq(friendships.addresseeId, user!.id))
+      )
+    );
+    revalidatePath("/workspace");
+    return { ok: true };
+  });
+}
+
+/** A brief public profile card for the "see profile" preview + moderation. */
+export async function getProfilePreviewAction(userId: string) {
+  return guardRead(async () => {
+    const me = await getUser();
+    if (!me) return null;
+    const [u] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+    if (!u) return null;
+    const [postCountRows, friendRows, myEdge] = await Promise.all([
+      db.select({ id: communityPosts.id }).from(communityPosts).where(eq(communityPosts.userId, userId)),
+      db
+        .select({ id: friendships.id })
+        .from(friendships)
+        .where(
+          and(
+            or(eq(friendships.requesterId, userId), eq(friendships.addresseeId, userId)),
+            eq(friendships.status, "accepted")
+          )
+        ),
+      db
+        .select()
+        .from(friendships)
+        .where(
+          or(
+            and(eq(friendships.requesterId, me.id), eq(friendships.addresseeId, userId)),
+            and(eq(friendships.requesterId, userId), eq(friendships.addresseeId, me.id))
+          )
+        )
+        .limit(1),
+    ]);
+    let friendState: FriendState = "none";
+    if (userId === me.id) friendState = "self";
+    else if (myEdge[0]) {
+      if (myEdge[0].status === "accepted") friendState = "friends";
+      else if (myEdge[0].addresseeId === me.id) friendState = "incoming";
+      else friendState = "outgoing";
+    }
+    return {
+      id: u.id,
+      name: u.name,
+      avatar: u.avatar ?? null,
+      role: u.role,
+      isAdmin: isAdminUser(u),
+      institution: u.institution,
+      bio: u.bio ?? null,
+      course: u.course ?? null,
+      yearLevel: u.yearLevel ?? null,
+      banner: u.banner ?? null,
+      online: userId === me.id ? !me.appearOffline : isOnline(u),
+      memberSince: u.createdAt.toISOString(),
+      postCount: postCountRows.length,
+      friendCount: friendRows.length,
+      friendState,
+      isSelf: userId === me.id,
+      muted: u.muted ?? false,
+      viewerIsAdmin: isAdminUser(me),
+    };
+  });
+}
+
+/* ---------------------------- admin moderation ---------------------------- */
+
+export async function setUserMutedAction(opts: { userId: string; muted: boolean }): Promise<{ ok: boolean; error?: string }> {
+  return guard(async () => {
+    const user = await getUser();
+    if (!user) return { ok: false, error: authError() };
+    if (!isAdminUser(user)) return { ok: false, error: "Only admins can moderate members." };
+    if (opts.userId === user.id) return { ok: false, error: "You can't mute yourself." };
+    await db.update(users).set({ muted: opts.muted }).where(eq(users.id, opts.userId));
+    revalidatePath("/workspace");
+    return { ok: true };
+  });
+}
+
+/** Remove a member from the community: wipe their posts, comments and
+ *  reactions, and mute them so they can't immediately repost. */
+export async function removeMemberAction(userId: string): Promise<{ ok: boolean; error?: string }> {
+  return guard(async () => {
+    const user = await getUser();
+    if (!user) return { ok: false, error: authError() };
+    if (!isAdminUser(user)) return { ok: false, error: "Only admins can remove members." };
+    if (userId === user.id) return { ok: false, error: "You can't remove yourself." };
+    const theirPosts = await db
+      .select({ id: communityPosts.id })
+      .from(communityPosts)
+      .where(eq(communityPosts.userId, userId));
+    const ids = theirPosts.map((p) => p.id);
+    if (ids.length) {
+      await db.delete(communityReactions).where(inArray(communityReactions.postId, ids));
+      await db.delete(communityComments).where(inArray(communityComments.postId, ids));
+      await db.delete(communityPosts).where(inArray(communityPosts.id, ids));
+    }
+    await db.delete(communityComments).where(eq(communityComments.userId, userId));
+    await db.delete(communityReactions).where(eq(communityReactions.userId, userId));
+    await db.update(users).set({ muted: true }).where(eq(users.id, userId));
+    revalidatePath("/workspace");
+    return { ok: true };
+  });
+}
+
+export async function promoteToAdminAction(userId: string): Promise<{ ok: boolean; error?: string }> {
+  return guard(async () => {
+    const user = await getUser();
+    if (!user) return { ok: false, error: authError() };
+    if (!isAdminUser(user)) return { ok: false, error: "Only admins can promote members." };
+    const [target] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+    if (!target) return { ok: false, error: "User not found." };
+    if (target.isGuest) return { ok: false, error: "Guests can't be promoted." };
+    if (target.isAdmin) return { ok: true };
+    await db.update(users).set({ isAdmin: true }).where(eq(users.id, userId));
+    revalidatePath("/workspace");
     return { ok: true };
   });
 }

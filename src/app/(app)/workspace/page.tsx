@@ -31,8 +31,11 @@ import {
   Spinner,
   useToast,
 } from "@/components/ui";
+import Community from "@/components/community";
 
 type WorkspaceData = NonNullable<Awaited<ReturnType<typeof getWorkspaceData>>>;
+
+type WorkspaceTab = "tasks" | "notes" | "docs" | "community";
 
 interface Task {
   id: string;
@@ -52,7 +55,7 @@ export default function WorkspacePage() {
   const { toast } = useToast();
   const [data, setData] = useState<WorkspaceData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<"tasks" | "notes" | "docs">("tasks");
+  const [tab, setTab] = useState<WorkspaceTab>("tasks");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -80,12 +83,12 @@ export default function WorkspacePage() {
           <NotebookPen size={26} /> Workspace
         </h1>
         <p className="mt-1 text-[15px] text-ink/60 dark:text-cream/60">
-          Tasks, notes and documents — like Notion meets Google Docs, inside your study app.
+          Tasks, notes, documents and your study community — all in one place.
         </p>
       </section>
 
-      <div className="flex gap-2 border-b border-ink/10 pb-3 dark:border-cream/15">
-        {(["tasks", "notes", "docs"] as const).map((t) => (
+      <div className="flex flex-wrap gap-2 border-b border-ink/10 pb-3 dark:border-cream/15">
+        {(["tasks", "notes", "docs", "community"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -96,7 +99,13 @@ export default function WorkspacePage() {
                 : "text-ink/50 hover:bg-ink/5 dark:text-cream/50 dark:hover:bg-cream/10"
             )}
           >
-            {t === "tasks" ? "✅ Tasks" : t === "notes" ? "📝 Notes" : "📄 Documents"}
+            {t === "tasks"
+              ? "✅ Tasks"
+              : t === "notes"
+                ? "📝 Notes"
+                : t === "docs"
+                  ? "📄 Documents"
+                  : "👥 Community"}
           </button>
         ))}
       </div>
@@ -110,6 +119,7 @@ export default function WorkspacePage() {
       {tab === "docs" && (
         <DocsTab data={data} kind="doc" onRefresh={load} />
       )}
+      {tab === "community" && <Community />}
     </div>
   );
 }

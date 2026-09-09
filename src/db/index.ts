@@ -80,6 +80,13 @@ const BOOTSTRAP_STATEMENTS = [
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar text`,
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS settings jsonb`,
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS api_key text`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS bio text`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS course text`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS year_level text`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS banner text`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS appear_offline boolean NOT NULL DEFAULT false`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen timestamptz`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS muted boolean NOT NULL DEFAULT false`,
   `ALTER TABLE kits ADD COLUMN IF NOT EXISTS pinned boolean NOT NULL DEFAULT false`,
 
   `CREATE TABLE IF NOT EXISTS classes (
@@ -190,6 +197,37 @@ const BOOTSTRAP_STATEMENTS = [
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now()
   )`,
+  `CREATE TABLE IF NOT EXISTS community_posts (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id uuid NOT NULL,
+    content text NOT NULL,
+    pinned boolean NOT NULL DEFAULT false,
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE TABLE IF NOT EXISTS community_reactions (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    post_id uuid NOT NULL,
+    user_id uuid NOT NULL,
+    emoji text NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS community_reactions_post_user_idx ON community_reactions (post_id, user_id)`,
+  `CREATE TABLE IF NOT EXISTS community_comments (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    post_id uuid NOT NULL,
+    user_id uuid NOT NULL,
+    content text NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE TABLE IF NOT EXISTS friendships (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    requester_id uuid NOT NULL,
+    addressee_id uuid NOT NULL,
+    status text NOT NULL DEFAULT 'pending',
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS friendships_pair_idx ON friendships (requester_id, addressee_id)`,
   `CREATE INDEX IF NOT EXISTS kits_user_idx ON kits (user_id)`,
   `CREATE INDEX IF NOT EXISTS cards_kit_idx ON cards (kit_id)`,
   `CREATE INDEX IF NOT EXISTS kit_questions_kit_idx ON kit_questions (kit_id)`,
@@ -200,6 +238,11 @@ const BOOTSTRAP_STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS events_user_idx ON events (user_id)`,
   `CREATE INDEX IF NOT EXISTS tasks_user_idx ON tasks (user_id)`,
   `CREATE INDEX IF NOT EXISTS documents_user_idx ON documents (user_id)`,
+  `CREATE INDEX IF NOT EXISTS community_posts_created_idx ON community_posts (created_at)`,
+  `CREATE INDEX IF NOT EXISTS community_reactions_post_idx ON community_reactions (post_id)`,
+  `CREATE INDEX IF NOT EXISTS community_comments_post_idx ON community_comments (post_id)`,
+  `CREATE INDEX IF NOT EXISTS friendships_requester_idx ON friendships (requester_id)`,
+  `CREATE INDEX IF NOT EXISTS friendships_addressee_idx ON friendships (addressee_id)`,
 ];
 
 /* ----------------------------- lazy pool ----------------------------- */
