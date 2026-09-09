@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, asc, desc, eq, inArray, or } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { db, isDatabaseConfigured } from "@/db";
 import {
   assignmentQuestions,
@@ -306,6 +306,7 @@ export async function getProfileAction(): Promise<{
   appearOffline: boolean;
   isAdmin: boolean;
   isGuest: boolean;
+  createdAt: string;
 } | null> {
   return guardRead(async () => {
     const user = await getUser();
@@ -323,7 +324,56 @@ export async function getProfileAction(): Promise<{
       appearOffline: user.appearOffline ?? false,
       isAdmin: isAdminUser(user),
       isGuest: user.isGuest,
+      createdAt: user.createdAt.toISOString(),
     };
+  });
+}
+
+/** Get account stats: kit count, card count, assignment count, post count. */
+export async function getAccountStatsAction(): Promise<{
+  kits: number;
+  cards: number;
+  assignments: number;
+  posts: number;
+} | null> {
+  return guardRead(async () => {
+    const user = await getUser();
+    if (!user) return null;
+    const [kitRows] = await db.select({ count: sql<number>`count(*)::int` }).from(kits).where(eq(kits.userId, user.id));
+    const [cardRows] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(cards)
+      .innerJoin(kits, eq(cards.kitId, kits.id))
+      .where(eq(kits.userId, user.id));
+    const [assignRows] = await db.select({ count: sql<number>`count(*)::int` }).from(assignments).where(eq(assignments.userId, user.id));
+    const [postRows] = await db.select({ count: sql<number>`count(*)::int` }).from(communityPosts).where(eq(communityPosts.userId, user.id));
+    return {
+      kits: kitRows?.count ?? 0,
+      cards: cardRows?.count ?? 0,
+      assignments: assignRows?.count ?? 0,
+      posts: postRows?.count ?? 0,
+    };
+  });
+}
+
+/** Change the user's password (requires current password). */
+export async function changePasswordAction(opts: {
+  currentPassword: string;
+  newPassword: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  return guard(async () => {
+    const user = await getUser();
+    if (!user) return { ok: false, error: "Not signed in." };
+    if (user.isGuest) return { ok: false, error: "Guests cannot change passwords." };
+    if (!user.passwordHash) return { ok: false, error: "Your account uses social sign-in. No password to change." };
+    const { compare } = await import("bcryptjs");
+    const valid = await compare(opts.currentPassword, user.passwordHash);
+    if (!valid) return { ok: false, error: "Current password is incorrect." };
+    if (opts.newPassword.length < 8) return { ok: false, error: "New password must be at least 8 characters." };
+    const { hash } = await import("bcryptjs");
+    const newHash = await hash(opts.newPassword, 12);
+    await db.update(users).set({ passwordHash: newHash }).where(eq(users.id, user.id));
+    return { ok: true };
   });
 }
 
@@ -420,6 +470,10 @@ export async function updateSettingsAction(settings: {
   language?: string;
   timerEnabled?: boolean;
   accent?: string;
+  fontSize?: string;
+  compactMode?: boolean;
+  soundEnabled?: boolean;
+  autoGenerate?: boolean;
 }): Promise<{ ok: boolean; error?: string }> {
   return guard(async () => {
     const user = await getUser();
@@ -440,6 +494,10 @@ export async function getUserSettings(): Promise<{
   language: string;
   timerEnabled: boolean;
   accent: string;
+  fontSize: string;
+  compactMode: boolean;
+  soundEnabled: boolean;
+  autoGenerate: boolean;
 } | null> {
   return guardRead(async () => {
     const user = await getUser();
@@ -454,6 +512,10 @@ export async function getUserSettings(): Promise<{
       language: (s.language as string) ?? "en",
       timerEnabled: (s.timerEnabled as boolean) ?? false,
       accent: (s.accent as string) ?? "lime",
+      fontSize: (s.fontSize as string) ?? "medium",
+      compactMode: (s.compactMode as boolean) ?? false,
+      soundEnabled: (s.soundEnabled as boolean) ?? true,
+      autoGenerate: (s.autoGenerate as boolean) ?? false,
     };
   });
 }

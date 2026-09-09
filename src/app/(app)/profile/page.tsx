@@ -2,10 +2,35 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Camera, Check, Copy, EyeOff, GraduationCap, KeyRound, LogOut, Pencil, RefreshCw, Settings2, Trash2, User, Users } from "lucide-react";
+import {
+  BookOpen,
+  Camera,
+  Check,
+  ClipboardList,
+  Copy,
+  Eye,
+  EyeOff,
+  FileText,
+  GraduationCap,
+  KeyRound,
+  LogOut,
+  Megaphone,
+  Pencil,
+  RefreshCw,
+  Shield,
+  Settings2,
+  Sparkles,
+  Trash2,
+  User,
+  Users,
+  Volume2,
+  VolumeX,
+} from "lucide-react";
 import { Avatar, Button, Card, cn, Field, Input, Spinner, Textarea, useToast } from "@/components/ui";
 import { ACCENTS, applyAccent, useTheme, type ThemeMode } from "@/components/theme";
 import {
+  changePasswordAction,
+  getAccountStatsAction,
   getApiKeyAction,
   getAvatarAction,
   getProfileAction,
@@ -54,15 +79,28 @@ export default function ProfilePage() {
   const [timerRounds, setTimerRounds] = useState(4);
   const [theme, setTheme] = useState("system");
   const [accent, setAccent] = useState("lime");
+  const [fontSize, setFontSize] = useState("medium");
+  const [compactMode, setCompactMode] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [autoGenerate, setAutoGenerate] = useState(false);
+  const [createdAt, setCreatedAt] = useState("");
+  const [stats, setStats] = useState<{ kits: number; cards: number; assignments: number; posts: number } | null>(null);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showCurrentPw, setShowCurrentPw] = useState(false);
+  const [showNewPw, setShowNewPw] = useState(false);
+  const [pwBusy, setPwBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [profile, settings, keyRes, av] = await Promise.all([
+    const [profile, settings, keyRes, av, statsRes] = await Promise.all([
       getProfileAction(),
       getUserSettings(),
       getApiKeyAction(),
       getAvatarAction(),
+      getAccountStatsAction(),
     ]);
     if (!profile) {
       router.push("/signin");
@@ -78,6 +116,8 @@ export default function ProfilePage() {
     setBanner(profile.banner ?? "lime");
     setAppearOffline(profile.appearOffline);
     setAvatar(av ?? profile.avatar);
+    setCreatedAt(profile.createdAt);
+    if (statsRes) setStats(statsRes);
     if (settings) {
       setTimerEnabled(settings.timerEnabled);
       setTimerWork(settings.timerWork);
@@ -91,6 +131,10 @@ export default function ProfilePage() {
       setMode(t);
       setAccent(settings.accent ?? "lime");
       applyAccent(settings.accent ?? "lime");
+      setFontSize(settings.fontSize ?? "medium");
+      setCompactMode(settings.compactMode);
+      setSoundEnabled(settings.soundEnabled);
+      setAutoGenerate(settings.autoGenerate);
     }
     if (keyRes.ok) setApiKey(keyRes.key ?? null);
     setLoading(false);
@@ -162,10 +206,40 @@ export default function ProfilePage() {
       timerRounds,
       theme,
       accent,
+      fontSize,
+      compactMode,
+      soundEnabled,
+      autoGenerate,
     });
     setSaving(false);
     if (res.ok) toast("Settings saved");
     else toast(res.error ?? "Could not save", "error");
+  };
+
+  const changePassword = async () => {
+    if (!currentPassword || !newPassword) {
+      toast("Fill in both password fields.", "error");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast("New passwords don't match.", "error");
+      return;
+    }
+    if (newPassword.length < 8) {
+      toast("New password must be at least 8 characters.", "error");
+      return;
+    }
+    setPwBusy(true);
+    const res = await changePasswordAction({ currentPassword, newPassword });
+    setPwBusy(false);
+    if (res.ok) {
+      toast("Password changed successfully");
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } else {
+      toast(res.error ?? "Could not change password", "error");
+    }
   };
 
   const regenKey = async () => {
@@ -270,6 +344,34 @@ export default function ProfilePage() {
         <Field label="Email">
           <Input value={email} disabled className="opacity-60" />
         </Field>
+      </Card>
+
+      {/* Account overview */}
+      <Card className="p-6">
+        <h2 className="mb-4 flex items-center gap-2 text-lg font-bold text-ink dark:text-cream">
+          <Sparkles size={18} /> Account overview
+        </h2>
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          {(
+            [
+              { icon: BookOpen, label: "Kits", count: stats?.kits ?? 0 },
+              { icon: FileText, label: "Cards", count: stats?.cards ?? 0 },
+              { icon: ClipboardList, label: "Assignments", count: stats?.assignments ?? 0 },
+              { icon: Megaphone, label: "Posts", count: stats?.posts ?? 0 },
+            ] as const
+          ).map((item) => (
+            <div key={item.label} className="rounded-2xl bg-ink/4 p-4 text-center dark:bg-cream/5">
+              <item.icon size={20} className="mx-auto text-brand-500" />
+              <p className="mt-2 text-2xl font-bold text-ink dark:text-cream">{item.count}</p>
+              <p className="text-[12px] text-ink/50 dark:text-cream/50">{item.label}</p>
+            </div>
+          ))}
+        </div>
+        {createdAt && (
+          <p className="mt-4 text-[13px] text-ink/50 dark:text-cream/50">
+            Member since {new Date(createdAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+          </p>
+        )}
       </Card>
 
       {/* Account type */}
@@ -403,6 +505,166 @@ export default function ProfilePage() {
 
         <Button onClick={saveAccount} disabled={saving || name.trim().length < 2}>
           {saving ? <Spinner className="border-ink/30 border-t-ink" /> : <Check size={15} />} Save profile
+        </Button>
+      </Card>
+
+      {/* Security */}
+      <Card className="space-y-4 p-6">
+        <h2 className="flex items-center gap-2 text-lg font-bold text-ink dark:text-cream">
+          <Shield size={18} /> Security
+        </h2>
+        <p className="text-[13px] text-ink/55 dark:text-cream/55">
+          Change your password to keep your account secure. Social sign-in accounts don't have a password.
+        </p>
+        <div className="space-y-3">
+          <Field label="Current password">
+            <div className="relative">
+              <Input
+                type={showCurrentPw ? "text" : "password"}
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                placeholder="Enter current password"
+              />
+              <button
+                type="button"
+                onClick={() => setShowCurrentPw((v) => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-ink/40 hover:text-ink/60 dark:text-cream/40 dark:hover:text-cream/60"
+              >
+                {showCurrentPw ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+          </Field>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="New password">
+              <div className="relative">
+                <Input
+                  type={showNewPw ? "text" : "password"}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Min. 8 characters"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowNewPw((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-ink/40 hover:text-ink/60 dark:text-cream/40 dark:hover:text-cream/60"
+                >
+                  {showNewPw ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+            </Field>
+            <Field label="Confirm new password">
+              <Input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Repeat new password"
+              />
+            </Field>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={changePassword}
+            disabled={pwBusy || !currentPassword || !newPassword || !confirmPassword}
+          >
+            {pwBusy ? <Spinner className="h-4 w-4" /> : <KeyRound size={14} />} Change password
+          </Button>
+        </div>
+      </Card>
+
+      {/* Customization */}
+      <Card className="space-y-5 p-6">
+        <h2 className="flex items-center gap-2 text-lg font-bold text-ink dark:text-cream">
+          <Sparkles size={18} /> Customization
+        </h2>
+        <Field label="Font size" hint="Adjust the text size across the entire app.">
+          <div className="flex gap-2">
+            {(["small", "medium", "large"] as const).map((s) => (
+              <button
+                key={s}
+                onClick={() => setFontSize(s)}
+                className={`rounded-full px-4 py-2 text-sm font-bold transition active:scale-95 ${
+                  fontSize === s
+                    ? "bg-brand-500 text-ink"
+                    : "bg-ink/5 text-ink/60 hover:bg-ink/10 dark:bg-cream/10 dark:text-cream/60"
+                }`}
+              >
+                {s === "small" ? "Small" : s === "medium" ? "Medium" : "Large"}
+              </button>
+            ))}
+          </div>
+        </Field>
+
+        <div className="flex items-center justify-between gap-3 rounded-2xl bg-ink/4 p-3.5 dark:bg-cream/5">
+          <div>
+            <p className="text-sm font-bold text-ink dark:text-cream">Compact mode</p>
+            <p className="text-xs text-ink/55 dark:text-cream/55">Reduce spacing and padding for a denser layout.</p>
+          </div>
+          <button
+            onClick={() => setCompactMode((v) => !v)}
+            className={cn(
+              "relative h-7 w-12 shrink-0 rounded-full transition",
+              compactMode ? "bg-brand-500" : "bg-ink/15 dark:bg-cream/20"
+            )}
+            aria-label="Toggle compact mode"
+          >
+            <span
+              className={cn(
+                "absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-all",
+                compactMode ? "left-6" : "left-1"
+              )}
+            />
+          </button>
+        </div>
+
+        <div className="flex items-center justify-between gap-3 rounded-2xl bg-ink/4 p-3.5 dark:bg-cream/5">
+          <div>
+            <p className="flex items-center gap-1.5 text-sm font-bold text-ink dark:text-cream">
+              {soundEnabled ? <Volume2 size={14} /> : <VolumeX size={14} />} Sound effects
+            </p>
+            <p className="text-xs text-ink/55 dark:text-cream/55">Play sounds for timer alerts and notifications.</p>
+          </div>
+          <button
+            onClick={() => setSoundEnabled((v) => !v)}
+            className={cn(
+              "relative h-7 w-12 shrink-0 rounded-full transition",
+              soundEnabled ? "bg-brand-500" : "bg-ink/15 dark:bg-cream/20"
+            )}
+            aria-label="Toggle sound effects"
+          >
+            <span
+              className={cn(
+                "absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-all",
+                soundEnabled ? "left-6" : "left-1"
+              )}
+            />
+          </button>
+        </div>
+
+        <div className="flex items-center justify-between gap-3 rounded-2xl bg-ink/4 p-3.5 dark:bg-cream/5">
+          <div>
+            <p className="text-sm font-bold text-ink dark:text-cream">Auto-generate kit</p>
+            <p className="text-xs text-ink/55 dark:text-cream/55">Automatically generate flashcards and questions when uploading materials.</p>
+          </div>
+          <button
+            onClick={() => setAutoGenerate((v) => !v)}
+            className={cn(
+              "relative h-7 w-12 shrink-0 rounded-full transition",
+              autoGenerate ? "bg-brand-500" : "bg-ink/15 dark:bg-cream/20"
+            )}
+            aria-label="Toggle auto-generate"
+          >
+            <span
+              className={cn(
+                "absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-all",
+                autoGenerate ? "left-6" : "left-1"
+              )}
+            />
+          </button>
+        </div>
+
+        <Button onClick={saveSettings} disabled={saving} variant="outline">
+          {saving ? <Spinner className="h-4 w-4" /> : <Check size={15} />} Save customization
         </Button>
       </Card>
 
