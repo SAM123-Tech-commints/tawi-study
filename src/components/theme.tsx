@@ -148,7 +148,7 @@ export function ThemeToggle({ className }: { className?: string }) {
     const originX = goingDark ? window.innerWidth : 0;
     const originY = 0;
     const maxDim = Math.hypot(window.innerWidth, window.innerHeight) * 1.5;
-    const bgColor = goingDark ? "var(--color-paper-dark)" : "var(--color-paper)";
+    const bgColor = goingDark ? "#000000" : "#ffffff";
 
     const overlay = document.createElement("div");
     overlay.style.cssText = `
