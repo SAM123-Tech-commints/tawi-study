@@ -315,15 +315,7 @@ export function TimerPopup({
   onSettingsClick?: () => void;
   onClose: () => void;
 }) {
-  const [min, setMin] = useState(() => {
-    try {
-      // After a restart the popup always comes back minimized.
-      const stored = JSON.parse(localStorage.getItem("tia-timer-ui") ?? "{}")?.min;
-      return stored === true || stored === undefined || stored === null ? true : false;
-    } catch {
-      return true;
-    }
-  });
+  const [min, setMin] = useState(true);
   const [pos, setPos] = useState<{ x: number; y: number } | null>(() => {
     try {
       const p = JSON.parse(localStorage.getItem("tia-timer-ui") ?? "{}")?.pos;
