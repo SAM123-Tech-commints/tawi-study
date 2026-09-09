@@ -8,6 +8,7 @@ import {
   Button,
   Card,
   cn,
+  ConfirmDialog,
   EmptyState,
   Field,
   Input,
@@ -33,26 +34,40 @@ const toISO = (d: Date) =>
 function DeleteEventButton({ id, onDeleted }: { id: string; onDeleted: () => void }) {
   const { toast } = useToast();
   const [busy, setBusy] = useState(false);
+  const [ask, setAsk] = useState(false);
+  const remove = async () => {
+    setBusy(true);
+    const res = await deleteEventAction(id);
+    setBusy(false);
+    setAsk(false);
+    if (!res.ok) {
+      toast(res.error ?? "Could not delete", "error");
+      return;
+    }
+    onDeleted();
+  };
   return (
-    <button
-      onClick={async () => {
-        if (!confirm("Delete this event?")) return;
-        setBusy(true);
-        const res = await deleteEventAction(id);
-        setBusy(false);
-        if (!res.ok) {
-          toast(res.error ?? "Could not delete", "error");
-          return;
-        }
-        onDeleted();
-      }}
-      disabled={busy}
-      className="rounded-full p-2 text-ink/35 transition hover:bg-red-50 hover:text-red-500 disabled:opacity-50 dark:hover:bg-red-500/10"
-      aria-label="Delete event"
-      title="Delete event"
-    >
-      <Trash2 size={15} />
-    </button>
+    <>
+      <button
+        onClick={() => setAsk(true)}
+        disabled={busy}
+        className="rounded-full p-2 text-ink/35 transition hover:bg-red-50 hover:text-red-500 disabled:opacity-50 active:scale-90 dark:hover:bg-red-500/10"
+        aria-label="Delete event"
+        title="Delete event"
+      >
+        <Trash2 size={15} />
+      </button>
+      <ConfirmDialog
+        open={ask}
+        title="Delete this event?"
+        message="The event will be removed from your calendar. This can't be undone."
+        confirmLabel="Delete"
+        danger
+        busy={busy}
+        onCancel={() => setAsk(false)}
+        onConfirm={remove}
+      />
+    </>
   );
 }
 

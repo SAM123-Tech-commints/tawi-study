@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Camera, Check, Copy, EyeOff, KeyRound, LogOut, RefreshCw, Settings2, Trash2, User, Users } from "lucide-react";
 import { Avatar, Button, Card, cn, Field, Input, Spinner, Textarea, useToast } from "@/components/ui";
-import { ACCENTS, applyAccent, applyTheme } from "@/components/theme";
+import { ACCENTS, applyAccent, useTheme, type ThemeMode } from "@/components/theme";
 import {
   getApiKeyAction,
   getAvatarAction,
@@ -31,6 +31,7 @@ const BANNER_GRADIENTS: Record<string, string> = {
 export default function ProfilePage() {
   const router = useRouter();
   const { toast } = useToast();
+  const { setMode } = useTheme();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState("");
@@ -83,14 +84,17 @@ export default function ProfilePage() {
       setTimerBreak(settings.timerBreak);
       setTimerLongBreak(settings.timerLongBreak);
       setTimerRounds(settings.timerRounds);
-      setTheme(settings.theme);
+      const t = (["light", "dark", "system"] as const).includes(settings.theme as ThemeMode)
+        ? (settings.theme as ThemeMode)
+        : "system";
+      setTheme(t);
+      setMode(t);
       setAccent(settings.accent ?? "lime");
       applyAccent(settings.accent ?? "lime");
-      applyTheme(settings.theme);
     }
     if (keyRes.ok) setApiKey(keyRes.key ?? null);
     setLoading(false);
-  }, [router]);
+  }, [router, setMode]);
 
   useEffect(() => {
     load();
@@ -449,7 +453,7 @@ export default function ProfilePage() {
                 key={t}
                 onClick={() => {
                   setTheme(t);
-                  applyTheme(t);
+                  setMode(t);
                 }}
                 className={`rounded-full px-4 py-2 text-sm font-bold transition active:scale-95 ${
                   theme === t

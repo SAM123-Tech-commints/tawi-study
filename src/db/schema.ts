@@ -71,6 +71,16 @@ export const friendships = pgTable("friendships", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+/** 1-on-1 friend chat message. Only accepted friends can message each other. */
+export const communityMessages = pgTable("community_messages", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  senderId: uuid("sender_id").notNull(),
+  receiverId: uuid("receiver_id").notNull(),
+  content: text("content").notNull(),
+  read: boolean("read").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const classes = pgTable("classes", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id").notNull(),

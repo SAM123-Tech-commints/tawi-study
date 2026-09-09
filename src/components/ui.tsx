@@ -561,6 +561,44 @@ export function RichText({ text, className, highlights }: { text: string; classN
   return <div className={cn("text-[15px] text-ink/85 dark:text-cream/85", className)}>{blocks}</div>;
 }
 
+/* -------------------------- Confirm dialog -------------------------- */
+
+export function ConfirmDialog({
+  open,
+  title,
+  message,
+  confirmLabel = "Confirm",
+  danger = false,
+  busy = false,
+  onCancel,
+  onConfirm,
+}: {
+  open: boolean;
+  title: string;
+  message: string;
+  confirmLabel?: string;
+  danger?: boolean;
+  busy?: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Modal open={open} onClose={onCancel}>
+      <h3 className="font-display text-lg font-bold text-ink dark:text-cream">{title}</h3>
+      <p className="mt-2 text-sm leading-relaxed text-ink/65 dark:text-cream/65">{message}</p>
+      <div className="mt-6 flex justify-end gap-2">
+        <Button variant="ghost" onClick={onCancel} disabled={busy}>
+          Cancel
+        </Button>
+        <Button variant={danger ? "danger" : "primary"} onClick={onConfirm} disabled={busy}>
+          {busy ? <Spinner className="h-4 w-4 border-white/30 border-t-white" /> : null}
+          {confirmLabel}
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
 /* ------------------------------- Toasts ------------------------------ */
 
 type Toast = { id: number; title: string; kind?: "success" | "error" };
@@ -761,10 +799,24 @@ export function RichEditor({
     [exec]
   );
 
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [linkUrl, setLinkUrl] = useState("");
+
   const insertLink = useCallback(() => {
-    const url = prompt("Enter URL:");
-    if (url) exec("createLink", url);
-  }, [exec]);
+    setLinkUrl("");
+    setLinkOpen(true);
+  }, []);
+
+  const confirmLink = useCallback(() => {
+    let url = linkUrl.trim();
+    if (!url) {
+      setLinkOpen(false);
+      return;
+    }
+    if (!/^https?:\/\//i.test(url) && !/^mailto:/i.test(url)) url = `https://${url}`;
+    setLinkOpen(false);
+    exec("createLink", url);
+  }, [linkUrl, exec]);
 
   const setColor = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -877,6 +929,30 @@ export function RichEditor({
         className="min-h-[300px] bg-white px-5 py-4 text-left text-[15px] leading-relaxed text-ink/85 outline-none empty:before:text-ink/30 dark:bg-surface-dark dark:text-cream/85 dark:before:text-cream/30 [&:empty]:before:content-[attr(data-placeholder)] [&_h1]:text-xl [&_h1]:font-bold [&_h1]:text-ink [&_h1]:dark:text-cream [&_h2]:text-lg [&_h2]:font-bold [&_h2]:text-ink [&_h2]:dark:text-cream [&_h3]:text-[15px] [&_h3]:font-bold [&_h3]:text-ink [&_h3]:dark:text-cream [&_li]:ml-4 [&_li]:list-disc [&_li]:pl-1 [&_ol]:ml-4 [&_ol]:list-decimal [&_p]:mb-2 [&_ul]:ml-4 [&_ul]:list-disc"
         style={{ minHeight }}
       />
+      <Modal open={linkOpen} onClose={() => setLinkOpen(false)}>
+        <h3 className="font-display text-lg font-bold text-ink dark:text-cream">Insert link</h3>
+        <div className="mt-4">
+          <Field label="URL">
+            <Input
+              value={linkUrl}
+              onChange={(e) => setLinkUrl(e.target.value)}
+              placeholder="https://example.com"
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === "Enter") confirmLink();
+              }}
+            />
+          </Field>
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <Button variant="ghost" onClick={() => setLinkOpen(false)}>
+            Cancel
+          </Button>
+          <Button onClick={confirmLink} disabled={!linkUrl.trim()}>
+            Insert
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }

@@ -10,6 +10,7 @@ import {
   cardProgress,
   classes,
   communityComments,
+  communityMessages,
   communityPosts,
   communityReactions,
   documents,
@@ -2312,6 +2313,130 @@ export async function promoteToAdminAction(userId: string): Promise<{ ok: boolea
     if (target.isAdmin) return { ok: true };
     await db.update(users).set({ isAdmin: true }).where(eq(users.id, userId));
     revalidatePath("/workspace");
+    return { ok: true };
+  });
+}
+
+/* ============================ FRIEND CHATS ============================ */
+
+async function requireFriend(userId: string, otherId: string) {
+  if (userId === otherId) return null;
+  const rows = await db
+    .select()
+    .from(friendships)
+    .where(
+      or(
+        and(eq(friendships.requesterId, userId), eq(friendships.addresseeId, otherId)),
+        and(eq(friendships.requesterId, otherId), eq(friendships.addresseeId, userId))
+      )
+    )
+    .limit(1);
+  const rel = rows[0];
+  if (!rel || rel.status !== "accepted") return null;
+  return rel;
+}
+
+export async function getChatsData() {
+  return guardRead(async () => {
+    const user = await getUser();
+    if (!user) return null;
+    const rels = await db
+      .select()
+      .from(friendships)
+      .where(
+        and(
+          or(eq(friendships.requesterId, user.id), eq(friendships.addresseeId, user.id)),
+          eq(friendships.status, "accepted")
+        )
+      );
+    if (!rels.length) return { chats: [] };
+    const friendIds = rels.map((r) => (r.requesterId === user.id ? r.addresseeId : r.requesterId));
+    const [friendRows, msgRows] = await Promise.all([
+      db.select().from(users).where(inArray(users.id, friendIds)),
+      db
+        .select()
+        .from(communityMessages)
+        .where(
+          or(
+            and(eq(communityMessages.senderId, user.id), inArray(communityMessages.receiverId, friendIds)),
+            and(eq(communityMessages.receiverId, user.id), inArray(communityMessages.senderId, friendIds))
+          )
+        )
+        .orderBy(desc(communityMessages.createdAt))
+        .limit(500),
+    ]);
+    const byId = new Map(friendRows.map((u) => [u.id, u]));
+    const chats = friendIds.map((fid) => {
+      const u = byId.get(fid);
+      const thread = msgRows.filter((m) => m.senderId === fid || m.receiverId === fid);
+      const last = thread[0] ?? null;
+      const unread = thread.filter((m) => m.receiverId === user.id && !m.read).length;
+      return {
+        id: fid,
+        name: u?.name ?? "Former member",
+        avatar: u?.avatar ?? null,
+        online: u ? isOnline(u) : false,
+        lastMessage: last?.content.slice(0, 80) ?? null,
+        lastAt: last ? last.createdAt.toISOString() : null,
+        lastMine: last ? last.senderId === user.id : false,
+        unread,
+      };
+    });
+    chats.sort((a, b) => (b.lastAt ?? "").localeCompare(a.lastAt ?? ""));
+    return { chats };
+  });
+}
+
+export async function getConversationAction(friendId: string) {
+  return guard(async () => {
+    const user = await getUser();
+    if (!user) return { ok: false, error: authError() } as const;
+    if (user.isGuest) return { ok: false, error: GUEST_MESSAGE } as const;
+    const rel = await requireFriend(user.id, friendId);
+    if (!rel) return { ok: false, error: "You can only chat with friends." } as const;
+    const rows = await db
+      .select()
+      .from(communityMessages)
+      .where(
+        or(
+          and(eq(communityMessages.senderId, user.id), eq(communityMessages.receiverId, friendId)),
+          and(eq(communityMessages.senderId, friendId), eq(communityMessages.receiverId, user.id))
+        )
+      )
+      .orderBy(asc(communityMessages.createdAt))
+      .limit(200);
+    // Mark their messages as read.
+    await db
+      .update(communityMessages)
+      .set({ read: true })
+      .where(and(eq(communityMessages.senderId, friendId), eq(communityMessages.receiverId, user.id)));
+    return {
+      ok: true,
+      messages: rows.map((m) => ({
+        id: m.id,
+        mine: m.senderId === user.id,
+        content: m.content,
+        createdAt: m.createdAt.toISOString(),
+      })),
+    } as const;
+  });
+}
+
+export async function sendMessageAction(opts: {
+  friendId: string;
+  content: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  return guard(async () => {
+    const user = await getUser();
+    if (!user) return { ok: false, error: authError() };
+    const blocked = memberBlocked(user);
+    if (blocked) return { ok: false, error: blocked };
+    if (user.muted) return { ok: false, error: "An admin has muted you in the community." };
+    const text = opts.content.trim().slice(0, 1000);
+    if (!text) return { ok: false, error: "Write a message first." };
+    const rel = await requireFriend(user.id, opts.friendId);
+    if (!rel) return { ok: false, error: "You can only chat with friends." };
+    await db.insert(communityMessages).values({ senderId: user.id, receiverId: opts.friendId, content: text });
     return { ok: true };
   });
 }

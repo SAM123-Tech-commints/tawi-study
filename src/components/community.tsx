@@ -26,7 +26,9 @@ import {
   createPostAction,
   deleteCommentAction,
   deletePostAction,
+  getChatsData,
   getCommunityData,
+  getConversationAction,
   getProfilePreviewAction,
   heartbeatAction,
   promoteToAdminAction,
@@ -35,10 +37,11 @@ import {
   removeMemberAction,
   respondFriendRequestAction,
   sendFriendRequestAction,
+  sendMessageAction,
   setUserMutedAction,
   togglePinPostAction,
 } from "@/lib/actions";
-import { Avatar, Badge, Button, Card, cn, EmptyState, Input, Spinner, Textarea, useToast } from "@/components/ui";
+import { Avatar, Badge, Button, Card, cn, ConfirmDialog, EmptyState, Input, Spinner, Textarea, useToast } from "@/components/ui";
 
 /* ------------------------------- types ------------------------------- */
 
@@ -143,6 +146,7 @@ function RoleBadge({ author }: { author: { isAdmin: boolean; role: string | null
 
 export default function Community() {
   const router = useRouter();
+  const [view, setView] = useState<"feed" | "chats">("feed");
   const [data, setData] = useState<CommunityData | null>(null);
   const [loading, setLoading] = useState(true);
   const [previewId, setPreviewId] = useState<string | null>(null);
@@ -194,7 +198,33 @@ export default function Community() {
   const canParticipate = !me.isGuest && !me.muted;
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
+    <div className="space-y-5">
+      <div className="inline-flex items-center gap-1 rounded-full border border-ink/10 bg-ink/5 p-1 dark:border-cream/10 dark:bg-cream/5">
+        {(
+          [
+            ["feed", "📢 Feed"],
+            ["chats", "💬 Friend chats"],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            onClick={() => setView(id)}
+            className={cn(
+              "rounded-full px-4 py-1.5 text-sm font-bold transition-all active:scale-95",
+              view === id
+                ? "bg-surface text-ink shadow-sm dark:bg-cream/15 dark:text-cream"
+                : "text-ink/60 hover:text-ink dark:text-cream/60 dark:hover:text-cream"
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {view === "chats" ? (
+        <ChatsTab me={me} />
+      ) : (
+      <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
       {/* ------------------------------- FEED ------------------------------- */}
       <div className="space-y-5">
         {me.isGuest ? (
@@ -249,6 +279,222 @@ export default function Community() {
       {previewId && (
         <ProfilePreviewModal userId={previewId} onClose={() => setPreviewId(null)} onChanged={refresh} />
       )}
+      </div>
+      )}
+    </div>
+  );
+}
+
+/* ============================ friend chats ============================ */
+
+type ChatsData = NonNullable<Awaited<ReturnType<typeof getChatsData>>>;
+type ChatItem = ChatsData["chats"][number];
+type ChatMessage = { id: string; mine: boolean; content: string; createdAt: string };
+
+function ChatsTab({ me }: { me: CommunityData["me"] }) {
+  const router = useRouter();
+  const { toast } = useToast();
+  const [chats, setChats] = useState<ChatItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  const loadChats = useCallback(async () => {
+    const d = await getChatsData();
+    if (d) setChats(d.chats);
+    setLoading(false);
+  }, []);
+
+  const loadThread = useCallback(
+    async (friendId: string) => {
+      const res = await getConversationAction(friendId);
+      if (!res.ok) {
+        toast(res.error ?? "Could not open chat", "error");
+        return;
+      }
+      setMessages(res.messages);
+    },
+    [toast]
+  );
+
+  useEffect(() => {
+    loadChats();
+  }, [loadChats]);
+
+  // Poll the open thread + list so chats feel live.
+  useEffect(() => {
+    if (!openId) return;
+    loadThread(openId);
+    const t = setInterval(() => {
+      loadThread(openId);
+      loadChats();
+    }, 5000);
+    return () => clearInterval(t);
+  }, [openId, loadThread, loadChats]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [messages, openId]);
+
+  const openChat = (id: string) => {
+    setOpenId(id);
+    setMessages([]);
+  };
+
+  const send = async () => {
+    const body = draft.trim();
+    if (!body || !openId || sending) return;
+    setSending(true);
+    const res = await sendMessageAction({ friendId: openId, content: body });
+    setSending(false);
+    if (!res.ok) {
+      toast(res.error ?? "Could not send", "error");
+      if (/guest|sign in/i.test(res.error ?? "")) router.push("/signin");
+      return;
+    }
+    setDraft("");
+    await loadThread(openId);
+    await loadChats();
+  };
+
+  const open = chats.find((c) => c.id === openId) ?? null;
+
+  if (loading) {
+    return (
+      <div className="flex h-[40vh] items-center justify-center">
+        <Spinner className="h-7 w-7" />
+      </div>
+    );
+  }
+
+  if (me.isGuest) {
+    return (
+      <Card className="flex items-center justify-between gap-3">
+        <p className="text-sm font-medium text-ink/70 dark:text-cream/70">
+          Chats are for members — create a free account and add friends to start chatting.
+        </p>
+        <Button size="sm" onClick={() => router.push("/signin")}>
+          Sign in
+        </Button>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="grid gap-4 md:grid-cols-[280px_1fr]">
+      {/* Conversation list */}
+      <Card className="max-h-[60vh] space-y-1 overflow-auto p-3">
+        {chats.length === 0 ? (
+          <div className="p-3 text-center">
+            <p className="text-sm font-bold text-ink dark:text-cream">No chats yet</p>
+            <p className="mt-1 text-[13px] text-ink/55 dark:text-cream/55">
+              Add friends from the Feed → Discover people, then chat here.
+            </p>
+          </div>
+        ) : (
+          chats.map((c) => (
+            <button
+              key={c.id}
+              onClick={() => openChat(c.id)}
+              className={cn(
+                "flex w-full items-center gap-2.5 rounded-2xl p-2 text-left transition active:scale-[0.99]",
+                openId === c.id ? "bg-brand-100 dark:bg-brand-500/15" : "hover:bg-ink/[0.04] dark:hover:bg-cream/[0.06]"
+              )}
+            >
+              <span className="relative inline-flex shrink-0">
+                <UserAvatar name={c.name} avatar={c.avatar} size={40} />
+                <span
+                  title={c.online ? "Online" : "Offline"}
+                  className={cn(
+                    "absolute -bottom-0.5 -right-0.5 rounded-full border-2 border-surface dark:border-surface-dark",
+                    c.online ? "bg-green-500" : "bg-ink/25 dark:bg-cream/30"
+                  )}
+                  style={{ width: 12, height: 12 }}
+                />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center justify-between gap-2">
+                  <span className="truncate text-[13px] font-bold text-ink dark:text-cream">{c.name}</span>
+                  {c.unread > 0 && (
+                    <span className="grid h-5 min-w-5 shrink-0 place-items-center rounded-full bg-brand-500 px-1 text-[11px] font-extrabold text-ink">
+                      {c.unread}
+                    </span>
+                  )}
+                </span>
+                <span className="block truncate text-[12px] text-ink/50 dark:text-cream/50">
+                  {c.lastMessage ? `${c.lastMine ? "You: " : ""}${c.lastMessage}` : "Say hi 👋"}
+                </span>
+              </span>
+            </button>
+          ))
+        )}
+      </Card>
+
+      {/* Thread */}
+      <Card className="flex max-h-[60vh] min-h-[320px] flex-col p-4">
+        {!open ? (
+          <div className="grid flex-1 place-items-center text-center">
+            <div>
+              <p className="text-4xl">💬</p>
+              <p className="mt-2 text-sm font-bold text-ink dark:text-cream">Pick a conversation</p>
+              <p className="mt-1 text-[13px] text-ink/55 dark:text-cream/55">Only friends can message each other.</p>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="mb-3 flex items-center gap-2.5 border-b border-ink/8 pb-3 dark:border-cream/10">
+              <UserAvatar name={open.name} avatar={open.avatar} size={34} />
+              <div>
+                <p className="text-sm font-bold text-ink dark:text-cream">{open.name}</p>
+                <p className={cn("text-[11px]", open.online ? "text-green-600 dark:text-green-400" : "text-ink/45 dark:text-cream/45")}>
+                  {open.online ? "Active now" : "Offline"}
+                </p>
+              </div>
+            </div>
+            <div className="flex-1 space-y-2 overflow-auto py-1">
+              {messages.map((m) => (
+                <div key={m.id} className={cn("flex", m.mine ? "justify-end" : "justify-start")}>
+                  <div
+                    className={cn(
+                      "max-w-[80%] rounded-2xl px-3.5 py-2 text-[13.5px] leading-snug",
+                      m.mine
+                        ? "rounded-br-md bg-brand-500 font-medium text-ink"
+                        : "rounded-bl-md bg-ink/[0.05] text-ink/85 dark:bg-cream/10 dark:text-cream/85"
+                    )}
+                  >
+                    <p className="whitespace-pre-wrap break-words">{m.content}</p>
+                    <p className={cn("mt-0.5 text-right text-[10px]", m.mine ? "text-ink/55" : "text-ink/40 dark:text-cream/40")}>
+                      {timeAgo(m.createdAt)}
+                    </p>
+                  </div>
+                </div>
+              ))}
+              <div ref={bottomRef} />
+            </div>
+            <div className="mt-3 flex items-center gap-2">
+              <Input
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                placeholder={`Message ${open.name}…`}
+                maxLength={1000}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    send();
+                  }
+                }}
+                className="h-10"
+              />
+              <Button onClick={send} disabled={sending || !draft.trim()} className="shrink-0">
+                {sending ? <Spinner className="h-4 w-4 border-ink/30 border-t-ink" /> : <Send size={15} />}
+              </Button>
+            </div>
+          </>
+        )}
+      </Card>
     </div>
   );
 }
@@ -337,6 +583,7 @@ function PostCard({
   const [showComments, setShowComments] = useState(false);
   const [commentText, setCommentText] = useState("");
   const [busy, setBusy] = useState(false);
+  const [askDelete, setAskDelete] = useState(false);
 
   const react = async (emoji: string) => {
     if (!canParticipate) {
@@ -369,8 +616,10 @@ function PostCard({
   };
 
   const removePost = async () => {
-    if (!confirm("Delete this post? This can't be undone.")) return;
+    setAskDelete(false);
+    setBusy(true);
     const res = await deletePostAction(post.id);
+    setBusy(false);
     if (!res.ok) {
       toast(res.error ?? "Could not delete", "error");
       return;
@@ -439,9 +688,9 @@ function PostCard({
           )}
           {post.canDelete && (
             <button
-              onClick={removePost}
+              onClick={() => setAskDelete(true)}
               title="Delete post"
-              className="rounded-full p-1.5 text-ink/35 transition hover:bg-red-50 hover:text-red-500 dark:text-cream/35 dark:hover:bg-red-500/10"
+              className="rounded-full p-1.5 text-ink/35 transition hover:bg-red-50 hover:text-red-500 active:scale-90 dark:text-cream/35 dark:hover:bg-red-500/10"
             >
               <Trash2 size={15} />
             </button>
@@ -453,6 +702,16 @@ function PostCard({
       <p className="whitespace-pre-wrap break-words text-[15px] leading-relaxed text-ink/85 dark:text-cream/85">
         {post.content}
       </p>
+      <ConfirmDialog
+        open={askDelete}
+        title="Delete this post?"
+        message="The post, its reactions and all comments will be removed. This can't be undone."
+        confirmLabel="Delete"
+        danger
+        busy={busy}
+        onCancel={() => setAskDelete(false)}
+        onConfirm={removePost}
+      />
 
       {/* Reaction summary */}
       {totalReactions > 0 && (
@@ -829,6 +1088,7 @@ function ProfilePreviewModal({
   const [preview, setPreview] = useState<Preview | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [ask, setAsk] = useState<null | { kind: "promote" | "remove" | "unfriend"; name: string }>(null);
 
   const load = useCallback(async () => {
     const p = await getProfilePreviewAction(userId);
@@ -970,10 +1230,7 @@ function ProfilePreviewModal({
                         size="sm"
                         variant="outline"
                         disabled={busy}
-                        onClick={() => {
-                          if (confirm(`Promote ${preview.name} to admin? They'll gain moderation powers.`))
-                            act(() => promoteToAdminAction(preview.id), "Promoted to admin 👑");
-                        }}
+                        onClick={() => setAsk({ kind: "promote", name: preview.name })}
                       >
                         <Crown size={14} /> Promote
                       </Button>
@@ -982,10 +1239,7 @@ function ProfilePreviewModal({
                       size="sm"
                       variant="danger"
                       disabled={busy}
-                      onClick={() => {
-                        if (confirm(`Remove ${preview.name} from the community? This deletes all their posts, comments and reactions, and mutes them.`))
-                          act(() => removeMemberAction(preview.id), "Member removed");
-                      }}
+                      onClick={() => setAsk({ kind: "remove", name: preview.name })}
                     >
                       <UserMinus size={14} /> Remove
                     </Button>
@@ -993,6 +1247,40 @@ function ProfilePreviewModal({
                 </div>
               )}
             </div>
+            <ConfirmDialog
+              open={ask !== null}
+              title={
+                ask?.kind === "promote"
+                  ? `Promote ${ask?.name ?? "this member"} to admin?`
+                  : ask?.kind === "remove"
+                    ? `Remove ${ask?.name ?? "this member"}?`
+                    : `Remove ${ask?.name ?? "this friend"}?`
+              }
+              message={
+                ask?.kind === "promote"
+                  ? "They'll gain moderation powers: pin, mute, promote and remove."
+                  : ask?.kind === "remove"
+                    ? "This deletes all their posts, comments and reactions, and mutes them. This can't be undone."
+                    : "You won't see each other in friends anymore. You can add them back later."
+              }
+              confirmLabel={ask?.kind === "promote" ? "Promote" : "Remove"}
+              danger={ask?.kind !== "promote"}
+              busy={busy}
+              onCancel={() => setAsk(null)}
+              onConfirm={() => {
+                if (!preview || !ask) return;
+                if (ask.kind === "promote") {
+                  setAsk(null);
+                  act(() => promoteToAdminAction(preview.id), "Promoted to admin 👑");
+                } else if (ask.kind === "remove") {
+                  setAsk(null);
+                  act(() => removeMemberAction(preview.id), "Member removed");
+                } else {
+                  setAsk(null);
+                  act(() => removeFriendAction(preview.id), "Friend removed");
+                }
+              }}
+            />
           </>
         )}
       </div>
@@ -1009,18 +1297,32 @@ function FriendActionButton({
   busy: boolean;
   act: (fn: () => Promise<{ ok: boolean; error?: string }>, okMsg?: string) => Promise<void>;
 }) {
+  const [askUnfriend, setAskUnfriend] = useState(false);
   if (preview.friendState === "friends")
     return (
-      <Button
-        size="sm"
-        variant="outline"
-        disabled={busy}
-        onClick={() => {
-          if (confirm(`Remove ${preview.name} from your friends?`)) act(() => removeFriendAction(preview.id), "Friend removed");
-        }}
-      >
-        <Check size={14} /> Friends
-      </Button>
+      <>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={busy}
+          onClick={() => setAskUnfriend(true)}
+        >
+          <Check size={14} /> Friends
+        </Button>
+        <ConfirmDialog
+          open={askUnfriend}
+          title={`Remove ${preview.name}?`}
+          message="You won't see each other in friends anymore. You can add them back later."
+          confirmLabel="Remove"
+          danger
+          busy={busy}
+          onCancel={() => setAskUnfriend(false)}
+          onConfirm={() => {
+            setAskUnfriend(false);
+            act(() => removeFriendAction(preview.id), "Friend removed");
+          }}
+        />
+      </>
     );
   if (preview.friendState === "outgoing")
     return (

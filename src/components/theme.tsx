@@ -55,47 +55,55 @@ const ThemeCtx = createContext<{ dark: boolean; mode: ThemeMode; toggle: () => v
   setMode: () => {},
 });
 
+function readStoredMode(): ThemeMode {
+  try {
+    const t = localStorage.getItem("tia-theme");
+    if (t === "dark" || t === "light") return t;
+  } catch {
+    /* ignore */
+  }
+  return "system";
+}
+
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [dark, setDark] = useState(false);
-  const [mode, setModeState] = useState<ThemeMode>("system");
+  // Single source of truth for light/dark: lazy init from storage (no
+  // mount-time overwrite races with pages that apply their saved theme).
+  const [mode, setModeState] = useState<ThemeMode>(() =>
+    typeof window === "undefined" ? "system" : readStoredMode()
+  );
+  const [dark, setDark] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    const m = readStoredMode();
+    return m === "dark" || (m === "system" && systemDark());
+  });
   const [mounted, setMounted] = useState(false);
 
+  // Paint the class whenever the resolved value changes.
   useEffect(() => {
-    let stored: string | null = null;
-    try {
-      stored = localStorage.getItem("tia-theme");
-    } catch {
-      /* ignore */
-    }
-    const applied = applyTheme(stored ?? "system");
-    setModeState(applied.mode);
-    setDark(applied.dark);
+    document.documentElement.classList.toggle("dark", dark);
+  }, [dark]);
+
+  useEffect(() => {
     try {
       const a = localStorage.getItem("tia-accent");
       if (a) applyAccent(a);
     } catch {
       /* ignore */
     }
-    // Follow the OS live while in system mode.
+    setMounted(true);
+  }, []);
+
+  // Follow the OS live, but only while the user chose "system".
+  useEffect(() => {
+    if (mode !== "system") return;
     let mq: MediaQueryList | null = null;
-    const onChange = () => {
-      try {
-        if (!localStorage.getItem("tia-theme")) {
-          const d = systemDark();
-          document.documentElement.classList.toggle("dark", d);
-          setDark(d);
-        }
-      } catch {
-        /* ignore */
-      }
-    };
+    const onChange = () => setDark(systemDark());
     try {
       mq = window.matchMedia("(prefers-color-scheme: dark)");
       mq.addEventListener("change", onChange);
     } catch {
       /* ignore */
     }
-    setMounted(true);
     return () => {
       try {
         mq?.removeEventListener("change", onChange);
@@ -103,27 +111,22 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         /* ignore */
       }
     };
-  }, []);
+  }, [mode]);
 
   const setMode = useCallback((m: ThemeMode) => {
-    const applied = applyTheme(m);
-    setModeState(applied.mode);
-    setDark(applied.dark);
+    setModeState(m);
+    setDark(m === "dark" || (m === "system" && systemDark()));
+    try {
+      if (m === "system") localStorage.removeItem("tia-theme");
+      else localStorage.setItem("tia-theme", m);
+    } catch {
+      /* ignore */
+    }
   }, []);
 
   const toggle = useCallback(() => {
-    setDark((d) => {
-      const next = !d;
-      document.documentElement.classList.toggle("dark", next);
-      try {
-        localStorage.setItem("tia-theme", next ? "dark" : "light");
-      } catch {
-        /* ignore */
-      }
-      setModeState(next ? "dark" : "light");
-      return next;
-    });
-  }, []);
+    setMode(dark ? "light" : "dark");
+  }, [dark, setMode]);
 
   if (!mounted) {
     return <ThemeCtx.Provider value={{ dark, mode, toggle, setMode }}>{children}</ThemeCtx.Provider>;

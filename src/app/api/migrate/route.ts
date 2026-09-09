@@ -167,6 +167,15 @@ export async function GET() {
       updated_at timestamptz NOT NULL DEFAULT now()
     )`,
     `CREATE UNIQUE INDEX IF NOT EXISTS friendships_pair_idx ON friendships (requester_id, addressee_id)`,
+    `CREATE TABLE IF NOT EXISTS community_messages (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      sender_id uuid NOT NULL,
+      receiver_id uuid NOT NULL,
+      content text NOT NULL,
+      read boolean NOT NULL DEFAULT false,
+      created_at timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE INDEX IF NOT EXISTS community_messages_pair_idx ON community_messages (sender_id, receiver_id)`,
   ];
 
   for (const stmt of statements) {
