@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Check,
+  CheckCheck,
   Crown,
   GraduationCap,
   ImagePlus,
@@ -37,9 +38,11 @@ import {
   getGroupMessagesAction,
   getGroupsData,
   getProfilePreviewAction,
+  getTypingAction,
   heartbeatAction,
   inviteToGroupAction,
   leaveGroupAction,
+  pingTypingAction,
   promoteToAdminAction,
   reactToPostAction,
   removeFriendAction,
@@ -731,7 +734,7 @@ function GroupsTab({ me }: { me: CommunityData["me"] }) {
 
 /* ============================ friend chats ============================ */type ChatsData = NonNullable<Awaited<ReturnType<typeof getChatsData>>>;
 type ChatItem = ChatsData["chats"][number];
-type ChatMessage = { id: string; mine: boolean; content: string; image: string | null; createdAt: string };
+type ChatMessage = { id: string; mine: boolean; content: string; image: string | null; read: boolean; createdAt: string };
 
 function ChatsTab({ me }: { me: CommunityData["me"] }) {
   const router = useRouter();
@@ -745,6 +748,7 @@ function ChatsTab({ me }: { me: CommunityData["me"] }) {
   const [chatImage, setChatImage] = useState<string | null>(null);
   const chatFileRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const [friendTyping, setFriendTyping] = useState(false);
 
   const loadChats = useCallback(async () => {
     const d = await getChatsData();
@@ -778,6 +782,29 @@ function ChatsTab({ me }: { me: CommunityData["me"] }) {
     }, 5000);
     return () => clearInterval(t);
   }, [openId, loadThread, loadChats]);
+
+  // Poll typing indicator for the open conversation.
+  useEffect(() => {
+    if (!openId) { setFriendTyping(false); return; }
+    let active = true;
+    const check = async () => {
+      const res = await getTypingAction(openId);
+      if (active && res.ok) setFriendTyping(res.typing);
+    };
+    check();
+    const t = setInterval(check, 3000);
+    return () => { active = false; clearInterval(t); };
+  }, [openId]);
+
+  // Ping typing when the user types in the draft box.
+  const pingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleDraftChange = (val: string) => {
+    setDraft(val);
+    if (openId && val.trim()) {
+      if (pingTimerRef.current) clearTimeout(pingTimerRef.current);
+      pingTimerRef.current = setTimeout(() => { pingTypingAction(openId); }, 300);
+    }
+  };
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -912,34 +939,58 @@ function ChatsTab({ me }: { me: CommunityData["me"] }) {
             <div className="mb-3 flex items-center gap-2.5 border-b border-ink/8 pb-3 dark:border-cream/10">
               <UserAvatar name={open.name} avatar={open.avatar} size={34} />
               <div>
-                <p className="text-sm font-bold text-ink dark:text-cream">{open.name}</p>
+                <p className="flex items-center gap-1.5 text-sm font-bold text-ink dark:text-cream">
+                  {open.name}
+                  {open.online && <span className="inline-block h-2 w-2 rounded-full bg-green-500" />}
+                </p>
                 <p className={cn("text-[11px]", open.online ? "text-green-600 dark:text-green-400" : "text-ink/45 dark:text-cream/45")}>
                   {open.online ? "Active now" : "Offline"}
                 </p>
               </div>
             </div>
-            <div className="flex-1 space-y-2 overflow-auto py-1">
-              {messages.map((m) => (
-                <div key={m.id} className={cn("flex", m.mine ? "justify-end" : "justify-start")}>
-                  <div
-                    className={cn(
-                      "max-w-[80%] rounded-2xl px-3.5 py-2 text-[13.5px] leading-snug",
-                      m.mine
-                        ? "rounded-br-md bg-brand-500 font-medium text-ink"
-                        : "rounded-bl-md bg-ink/[0.05] text-ink/85 dark:bg-cream/10 dark:text-cream/85"
-                    )}
-                  >
-                    {m.image && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={m.image} alt="Attached" className="mb-1.5 max-h-48 rounded-xl object-cover" loading="lazy" />
-                    )}
-                    {m.content ? <p className="whitespace-pre-wrap break-words">{m.content}</p> : null}
-                    <p className={cn("mt-0.5 text-right text-[10px]", m.mine ? "text-ink/55" : "text-ink/40 dark:text-cream/40")}>
-                      {timeAgo(m.createdAt)}
-                    </p>
+            <div className="flex-1 space-y-0.5 overflow-auto py-1">
+              {messages.map((m, i) => {
+                const prevSame = i > 0 && messages[i - 1].mine === m.mine;
+                return (
+                  <div key={m.id} className={cn("flex", m.mine ? "justify-end" : "justify-start", prevSame && "mt-0.5")}>
+                    <div
+                      className={cn(
+                        "max-w-[80%] rounded-2xl px-3.5 py-2 text-[13.5px] leading-snug",
+                        m.mine
+                          ? "rounded-br-md bg-brand-500 font-medium text-ink"
+                          : "rounded-bl-md bg-ink/[0.05] text-ink/85 dark:bg-cream/10 dark:text-cream/85"
+                      )}
+                    >
+                      {m.image && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={m.image} alt="Attached" className="mb-1.5 max-h-48 rounded-xl object-cover" loading="lazy" />
+                      )}
+                      {m.content ? <p className="whitespace-pre-wrap break-words">{m.content}</p> : null}
+                      {!prevSame && (
+                        <p className={cn("mt-0.5 flex items-center justify-end gap-1 text-[10px]", m.mine ? "text-ink/55" : "text-ink/40 dark:text-cream/40")}>
+                          {timeAgo(m.createdAt)}
+                          {m.mine && (
+                            m.read
+                              ? <CheckCheck size={12} className="text-brand-600 dark:text-brand-400" />
+                              : <Check size={12} className="text-ink/40 dark:text-cream/40" />
+                          )}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+              {friendTyping && (
+                <div className="flex justify-start">
+                  <div className="rounded-2xl rounded-bl-md bg-ink/[0.05] px-3.5 py-2.5 dark:bg-cream/10">
+                    <span className="flex items-center gap-1">
+                      <span className="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-ink/40 [animation-delay:0ms] dark:bg-cream/40" />
+                      <span className="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-ink/40 [animation-delay:150ms] dark:bg-cream/40" />
+                      <span className="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-ink/40 [animation-delay:300ms] dark:bg-cream/40" />
+                    </span>
                   </div>
                 </div>
-              ))}
+              )}
               <div ref={bottomRef} />
             </div>
             {chatImage && (
@@ -1289,7 +1340,7 @@ function PostCard({
               key={emoji}
               onClick={() => react(emoji)}
               className={cn(
-                "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[13px] transition",
+                "inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[12px] transition",
                 post.myReaction === emoji
                   ? "border-brand-400 bg-brand-100 dark:border-brand-500/50 dark:bg-brand-500/20"
                   : "border-ink/10 bg-ink/[0.03] hover:bg-ink/[0.06] dark:border-cream/10 dark:bg-cream/5 dark:hover:bg-cream/10"
@@ -1328,7 +1379,7 @@ function PostCard({
                     key={emoji}
                     onClick={() => react(emoji)}
                     className={cn(
-                      "grid h-9 w-9 place-items-center rounded-full text-xl transition hover:scale-125 hover:bg-ink/5 dark:hover:bg-cream/10",
+                      "grid h-7 w-7 place-items-center rounded-full text-base transition hover:scale-125 hover:bg-ink/5 dark:hover:bg-cream/10",
                       post.myReaction === emoji && "bg-brand-100 dark:bg-brand-500/20"
                     )}
                   >
@@ -1398,7 +1449,7 @@ function PostCard({
                     submitComment();
                   }
                 }}
-                className="h-9"
+                className="h-10"
               />
               <Button size="sm" variant="soft" onClick={submitComment} disabled={busy || !commentText.trim()}>
                 {busy ? <Spinner className="h-4 w-4" /> : <Send size={14} />}

@@ -29,7 +29,7 @@ export function OwlLogo({ size = 32, className = "" }: { size?: number; classNam
         width={size}
         height={size}
         className={`rounded-[28%] object-cover ${className}`}
-        style={{ background: "var(--color-brand-500)" }}
+        style={{ background: "var(--color-brand-500)", color: "var(--color-brand-500)" }}
         onError={() => setImgOk(false)}
         onLoad={(e) => {
           if ((e.target as HTMLImageElement).naturalWidth < 2) setImgOk(false);

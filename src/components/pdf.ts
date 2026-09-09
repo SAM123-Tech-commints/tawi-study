@@ -71,7 +71,13 @@ export async function extractPdfText(file: File): Promise<string> {
         merged.push(line);
       }
     }
-    pages.push(merged.join("\n"));
+    // Clean up multiple spaces and normalize whitespace
+    const cleaned = merged
+      .join("\n")
+      .replace(/ {2,}/g, " ")
+      .replace(/\t+/g, " ")
+      .trim();
+    pages.push(cleaned);
   }
   return pages.join("\n\n").trim();
 }

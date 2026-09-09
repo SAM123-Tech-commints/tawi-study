@@ -262,6 +262,12 @@ const BOOTSTRAP_STATEMENTS = [
   )`,
   `CREATE INDEX IF NOT EXISTS community_group_messages_group_idx ON community_group_messages (group_id)`,
   `CREATE INDEX IF NOT EXISTS community_messages_pair_idx ON community_messages (sender_id, receiver_id)`,
+  `CREATE TABLE IF NOT EXISTS chat_typing (
+    user_id uuid NOT NULL,
+    friend_id uuid NOT NULL,
+    typing_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS chat_typing_pair_idx ON chat_typing (user_id, friend_id)`,
   `CREATE INDEX IF NOT EXISTS kits_user_idx ON kits (user_id)`,
   `CREATE INDEX IF NOT EXISTS cards_kit_idx ON cards (kit_id)`,
   `CREATE INDEX IF NOT EXISTS kit_questions_kit_idx ON kit_questions (kit_id)`,

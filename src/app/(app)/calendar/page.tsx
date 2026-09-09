@@ -222,11 +222,11 @@ export default function CalendarPage() {
       {events.length === 0 ? (
         <EmptyState
           icon={<CalendarDays size={22} />}
-          title="No events yet"
-          desc="Plan exams, assignment due dates and study sessions on your editable calendar."
+          title="Start planning"
+          desc="Add your first event to track exams, assignment due dates, or study sessions."
           action={
-            <Button onClick={() => openNew(today)}>
-              <Plus size={15} /> Add your first event
+            <Button onClick={() => openNew(today)} className="mt-3">
+              <Plus size={15} /> Add event
             </Button>
           }
         />

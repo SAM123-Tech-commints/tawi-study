@@ -49,7 +49,7 @@ export const communityReactions = pgTable("community_reactions", {
   id: uuid("id").primaryKey().defaultRandom(),
   postId: uuid("post_id").notNull(),
   userId: uuid("user_id").notNull(),
-  emoji: text("emoji").notNull(), // 👍 ❤️ 😂 😮 😢 👏
+  emoji: text("emoji").notNull(), // 👍 ❤️ 😂 😮 👏
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -107,6 +107,13 @@ export const communityGroupMessages = pgTable("community_group_messages", {
   content: text("content").notNull(),
   image: text("image"), // base64 data URL or null
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Tracks per-conversation typing/presence status (lightweight, auto-cleaned). */
+export const chatTyping = pgTable("chat_typing", {
+  userId: uuid("user_id").notNull(),
+  friendId: uuid("friend_id").notNull(),
+  typingAt: timestamp("typing_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const classes = pgTable("classes", {

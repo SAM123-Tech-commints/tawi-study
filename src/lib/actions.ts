@@ -8,6 +8,7 @@ import {
   attempts,
   cards,
   cardProgress,
+  chatTyping,
   classes,
   communityComments,
   communityGroupMembers,
@@ -1417,21 +1418,27 @@ export async function fetchUrlAction(url: string): Promise<{
       }
     } catch {}
 
-    // 2) Try to get transcript via youtube-transcript
+    // 2) Try to get transcript via youtube-transcript (try multiple languages)
     let transcript = "";
-    try {
-      const { YoutubeTranscript } = await import("youtube-transcript");
-      const items = await YoutubeTranscript.fetchTranscript(videoId, { lang: "en" });
-      transcript = items.map((i: { text: string }) => i.text).join(" ");
-    } catch {}
+    const tryLangs = ["en", "en-US", "en-GB", "auto"];
+    for (const lang of tryLangs) {
+      if (transcript.length > 200) break;
+      try {
+        const { YoutubeTranscript } = await import("youtube-transcript");
+        const items = await YoutubeTranscript.fetchTranscript(videoId, { lang });
+        const joined = items.map((i: { text: string }) => i.text).join(" ");
+        if (joined.length > transcript.length) transcript = joined;
+      } catch {}
+    }
 
     // 2b) Backup: TranscriptAPI.com (server-side key, never exposed to the browser)
     if (transcript.length <= 200) {
       const tapKey = (process.env.TRANSCRIPT_API_KEY ?? "").trim();
       if (tapKey) {
         try {
+          const fullUrl = `https://www.youtube.com/watch?v=${videoId}`;
           const tapRes = await fetch(
-            `https://transcriptapi.com/api/v2/youtube/transcript?video_url=${encodeURIComponent(videoId)}&format=json`,
+            `https://transcriptapi.com/api/v2/youtube/transcript?video_url=${encodeURIComponent(fullUrl)}`,
             {
               headers: { Authorization: `Bearer ${tapKey}` },
               signal: AbortSignal.timeout(20000),
@@ -1543,9 +1550,10 @@ export async function fetchUrlAction(url: string): Promise<{
   const contentType = res.headers.get("content-type") ?? "";
   const html = await res.text();
 
-  // Extract title
+// Extract title
   const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
   const ogTitle = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i);
+  const ogDescription = html.match(/<meta[^>]*property=["']og:description["'][^>]*content=["']([^"']+)["']/i);
   const pageTitle = ogTitle?.[1]?.trim() ?? titleMatch?.[1]?.trim() ?? new URL(url).hostname;
 
   // Try to extract article/main content first, fallback to full body
@@ -1578,10 +1586,14 @@ export async function fetchUrlAction(url: string): Promise<{
   if (text.length < 100)
     return { ok: false, error: "Could not extract readable text from this page. Try pasting the content instead." };
 
+  const combined =
+    ogDescription?.[1]?.trim()
+      ? `${ogDescription[1].trim()}\n\n${text.slice(0, 50000 - ogDescription[1].trim().length - 2)}`
+      : text.slice(0, 50000);
   return {
     ok: true,
     title: pageTitle,
-    text: text.slice(0, 50000),
+    text: combined,
   };
   } catch {
     return { ok: false, error: "Invalid or unreachable URL." };
@@ -1849,7 +1861,7 @@ export async function deleteDocAction(id: string): Promise<{ ok: boolean; error?
  *  reactions, threaded comments, a friend system with live presence, and
  *  admin moderation (pin, mute, remove, promote, delete anything).        */
 
-const REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "👏"] as const;
+const REACTIONS = ["👍", "❤️", "😂", "😮", "👏"] as const;
 type ReactionEmoji = (typeof REACTIONS)[number];
 
 /** How long after the last heartbeat a member still counts as "online". */
@@ -2434,6 +2446,7 @@ export async function getConversationAction(friendId: string) {
         mine: m.senderId === user.id,
         content: m.content,
         image: (m as { image?: string | null }).image ?? null,
+        read: m.read,
         createdAt: m.createdAt.toISOString(),
       })),
     } as const;
@@ -2459,6 +2472,39 @@ export async function sendMessageAction(opts: {
     if (!rel) return { ok: false, error: "You can only chat with friends." };
     await db.insert(communityMessages).values({ senderId: user.id, receiverId: opts.friendId, content: text, image: opts.image ?? null });
     return { ok: true };
+  });
+}
+
+/** Lightly ping the conversation so the friend sees a typing indicator. */
+export async function pingTypingAction(friendId: string): Promise<{ ok: boolean }> {
+  return guard(async () => {
+    const user = await getUser();
+    if (!user) return { ok: false };
+    const rel = await requireFriend(user.id, friendId);
+    if (!rel) return { ok: false };
+    await db
+      .insert(chatTyping)
+      .values({ userId: user.id, friendId, typingAt: new Date() })
+      .onConflictDoUpdate({ target: [chatTyping.userId, chatTyping.friendId], set: { typingAt: new Date() } });
+    return { ok: true };
+  });
+}
+
+/** Check whether a friend is typing (typing_at within last 5 seconds). */
+export async function getTypingAction(friendId: string): Promise<{ ok: boolean; typing: boolean }> {
+  return guard(async () => {
+    const user = await getUser();
+    if (!user) return { ok: false, typing: false };
+    const rel = await requireFriend(user.id, friendId);
+    if (!rel) return { ok: false, typing: false };
+    const rows = await db
+      .select()
+      .from(chatTyping)
+      .where(and(eq(chatTyping.userId, friendId), eq(chatTyping.friendId, user.id)))
+      .limit(1);
+    if (!rows.length) return { ok: true, typing: false };
+    const diff = Date.now() - new Date(rows[0].typingAt).getTime();
+    return { ok: true, typing: diff < 5000 };
   });
 }
 

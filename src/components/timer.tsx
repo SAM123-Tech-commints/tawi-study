@@ -317,10 +317,11 @@ export function TimerPopup({
 }) {
   const [min, setMin] = useState(() => {
     try {
-      // After a restart the popup comes back minimized, never maximized.
-      return JSON.parse(localStorage.getItem("tia-timer-ui") ?? "{}")?.min === true;
+      // After a restart the popup always comes back minimized.
+      const stored = JSON.parse(localStorage.getItem("tia-timer-ui") ?? "{}")?.min;
+      return stored === true || stored === undefined || stored === null ? true : false;
     } catch {
-      return false;
+      return true;
     }
   });
   const [pos, setPos] = useState<{ x: number; y: number } | null>(() => {
@@ -343,8 +344,8 @@ export function TimerPopup({
   }, [min, pos]);
 
   const clampPos = (x: number, y: number) => ({
-    x: Math.min(Math.max(8, x), Math.max(8, window.innerWidth - 316)),
-    y: Math.min(Math.max(8, y), Math.max(8, window.innerHeight - 220)),
+    x: Math.max(8, Math.min(window.innerWidth - 316, x)),
+    y: Math.max(8, Math.min(window.innerHeight - 220, y)),
   });
 
   // Professional drag, shared by the full card and the mini pill:
