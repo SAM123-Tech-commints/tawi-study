@@ -345,6 +345,32 @@ export function TimerPopup({
     y: Math.min(Math.max(8, y), Math.max(8, window.innerHeight - 220)),
   });
 
+  // Mini pill: silent drag (no label). A press that barely moves counts as a
+  // tap and is left for the buttons; anything beyond 8px becomes a drag.
+  const onMiniDown = (e: React.PointerEvent) => {
+    if ((e.target as HTMLElement).closest("button")) return;
+    e.preventDefault();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const host = (e.currentTarget as HTMLElement).closest("[data-timer-popup]") as HTMLElement | null;
+    const r = host?.getBoundingClientRect();
+    const baseX = pos?.x ?? r?.left ?? window.innerWidth - 320;
+    const baseY = pos?.y ?? r?.top ?? window.innerHeight - 200;
+    let dragged = false;
+    const move = (ev: PointerEvent) => {
+      if (!dragged && Math.hypot(ev.clientX - startX, ev.clientY - startY) < 8) return;
+      dragged = true;
+      setPos(clampPos(baseX + ev.clientX - startX, baseY + ev.clientY - startY));
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointercancel", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up, { once: true });
+    window.addEventListener("pointercancel", up, { once: true });
+  };
+
   const onPointerDown = (e: React.PointerEvent) => {
     // Never start a drag from the minimize/close buttons — let them click.
     if ((e.target as HTMLElement).closest("button")) return;
@@ -376,7 +402,11 @@ export function TimerPopup({
       style={pos ? { left: pos.x, top: pos.y } : { right: 20, bottom: 20 }}
     >
       {min ? (
-        <div className="flex items-center gap-1 rounded-full border border-ink/10 bg-surface py-1.5 pl-4 pr-1.5 shadow-xl dark:border-cream/15 dark:bg-surface-dark">
+        <div
+          className="flex cursor-grab touch-none items-center gap-1 rounded-full border border-ink/10 bg-surface py-1.5 pl-4 pr-1.5 shadow-xl active:cursor-grabbing dark:border-cream/15 dark:bg-surface-dark"
+          onPointerDown={onMiniDown}
+          title="Drag to move · tap ▶ to expand"
+        >
           <MiniClock />
           <button
             onClick={() => setMin(false)}

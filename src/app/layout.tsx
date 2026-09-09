@@ -22,7 +22,7 @@ export const metadata: Metadata = {
   title: "Tawi Study — Turn your notes into study tools with AI",
   description:
     "The fastest way to earn better grades. Upload any notes, textbook chapter or lecture and Tawi instantly creates flashcards, practice tests, study guides and smart study sessions.",
-  icons: { icon: "/favicon.svg" },
+  icons: { icon: [{ url: "/favicon.png" }, { url: "/favicon.svg" }] },
 };
 
 export const viewport: Viewport = {

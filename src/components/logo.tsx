@@ -1,5 +1,32 @@
-/** Inline SVG owl icon. Green parts follow the UI accent theme (Profile → Accent color). */
+"use client";
+
+import { useState } from "react";
+
+/**
+ * Brand owl. Uses public/logo.png (transparent white owl, no background) when
+ * present — save the chat PNG there and it is picked up automatically.
+ * Otherwise renders a matching inline SVG: white owl head on the UI accent
+ * color, so it recolors with Profile → Accent color in both light and dark.
+ */
 export function OwlLogo({ size = 32, className = "" }: { size?: number; className?: string }) {
+  const [imgOk, setImgOk] = useState(true);
+  if (imgOk) {
+    return (
+      <img
+        src="/logo.png"
+        alt="Tawi Study"
+        width={size}
+        height={size}
+        className={`rounded-[28%] object-cover ${className}`}
+        style={{ background: "var(--color-brand-500)" }}
+        onError={() => setImgOk(false)}
+      />
+    );
+  }
+  return <OwlSvg size={size} className={className} />;
+}
+
+function OwlSvg({ size = 32, className = "" }: { size?: number; className?: string }) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -7,28 +34,35 @@ export function OwlLogo({ size = 32, className = "" }: { size?: number; classNam
       width={size}
       height={size}
       className={className}
+      role="img"
+      aria-label="Tawi Study"
     >
-      <rect width="512" height="512" rx="128" fill="var(--color-brand-500)" />
-      <g transform="translate(80, 40)">
-        <path
-          d="M170 280Q140 220 120 180Q130 160 160 170Q145 130 130 100Q150 110 170 140Q180 100 195 80Q200 105 200 130Q215 90 230 70Q230 100 225 130Q245 110 265 100Q255 130 240 150Q265 130 285 125Q270 160 250 175Q275 165 295 160Q280 190 260 200Q270 200 280 205Q260 230 240 245Q250 265 250 290Q230 320 210 340Q195 360 180 370Q175 360 170 345Q155 360 145 370Q140 360 135 345Q115 325 100 300Q90 275 95 250Q85 230 95 210Q80 200 90 190Q85 170 100 160Q100 145 115 140Q110 120 130 100"
-          fill="white"
-        />
-        <circle cx="170" cy="240" r="58" fill="var(--color-brand-500)" />
-        <circle cx="280" cy="235" r="55" fill="var(--color-brand-500)" />
-        <circle cx="170" cy="240" r="48" fill="white" />
-        <circle cx="280" cy="235" r="45" fill="white" />
-        <circle cx="180" cy="240" r="30" fill="var(--color-brand-500)" />
-        <circle cx="288" cy="235" r="28" fill="var(--color-brand-500)" />
-        <circle cx="190" cy="230" r="10" fill="white" />
-        <circle cx="298" cy="225" r="9" fill="white" />
-        <path
-          d="M230 275Q255 265 290 280Q300 290 295 300Q280 325 255 340Q240 348 230 345Q215 335 220 310Q225 295 230 275Z"
-          fill="var(--color-brand-500)"
-          stroke="white"
-          strokeWidth="6"
-        />
-      </g>
+      <rect width="512" height="512" rx="120" fill="var(--color-brand-500)" />
+      {/* Spiky feather head silhouette */}
+      <path
+        d="M262 78 Q300 78 322 118 Q392 132 428 196 Q462 262 438 332 Q414 402 344 434 Q274 464 204 446 Q134 428 104 360 Q78 296 96 232 Q110 172 168 148 Q158 112 188 108 Q218 102 262 78 Z"
+        fill="white"
+      />
+      {/* Left feather tufts */}
+      <path
+        d="M168 148 Q120 160 96 200 Q130 196 168 188 Z M132 250 Q96 268 88 306 Q122 296 150 282 Z M150 350 Q124 378 124 410 Q154 396 178 372 Z"
+        fill="white"
+      />
+      {/* Eyes: accent rings, white centers, accent pupils */}
+      <circle cx="228" cy="258" r="62" fill="var(--color-brand-500)" />
+      <circle cx="352" cy="250" r="54" fill="var(--color-brand-500)" />
+      <circle cx="228" cy="258" r="42" fill="white" />
+      <circle cx="352" cy="250" r="36" fill="white" />
+      <circle cx="240" cy="246" r="17" fill="var(--color-brand-500)" />
+      <circle cx="362" cy="238" r="15" fill="var(--color-brand-500)" />
+      {/* Beak */}
+      <path
+        d="M290 300 Q350 288 392 312 Q410 326 402 348 Q392 372 360 372 Q330 372 310 360 Q292 350 290 332 Q288 314 290 300 Z"
+        fill="var(--color-brand-500)"
+        stroke="white"
+        strokeWidth="10"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
