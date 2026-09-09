@@ -12,6 +12,7 @@ export const ACCENTS = [
 ] as const;
 
 export type AccentId = (typeof ACCENTS)[number]["id"];
+export type ThemeMode = "light" | "dark" | "system";
 
 /** Paint the whole UI in an accent color instantly + remember it. */
 export function applyAccent(accent: string) {
@@ -25,24 +26,89 @@ export function applyAccent(accent: string) {
   }
 }
 
-const ThemeCtx = createContext<{ dark: boolean; toggle: () => void }>({
+function systemDark(): boolean {
+  try {
+    return window.matchMedia("(prefers-color-scheme: dark)").matches;
+  } catch {
+    return false;
+  }
+}
+
+/** Apply a theme mode RIGHT NOW: light, dark, or follow the OS (system). */
+export function applyTheme(mode: string) {
+  const m: ThemeMode = mode === "dark" ? "dark" : mode === "light" ? "light" : "system";
+  const dark = m === "dark" || (m === "system" && systemDark());
+  document.documentElement.classList.toggle("dark", dark);
+  try {
+    if (m === "system") localStorage.removeItem("tia-theme");
+    else localStorage.setItem("tia-theme", m);
+  } catch {
+    /* ignore */
+  }
+  return { mode: m, dark };
+}
+
+const ThemeCtx = createContext<{ dark: boolean; mode: ThemeMode; toggle: () => void; setMode: (m: ThemeMode) => void }>({
   dark: false,
+  mode: "system",
   toggle: () => {},
+  setMode: () => {},
 });
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [dark, setDark] = useState(false);
+  const [mode, setModeState] = useState<ThemeMode>("system");
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    setDark(document.documentElement.classList.contains("dark"));
+    let stored: string | null = null;
+    try {
+      stored = localStorage.getItem("tia-theme");
+    } catch {
+      /* ignore */
+    }
+    const applied = applyTheme(stored ?? "system");
+    setModeState(applied.mode);
+    setDark(applied.dark);
     try {
       const a = localStorage.getItem("tia-accent");
       if (a) applyAccent(a);
     } catch {
       /* ignore */
     }
+    // Follow the OS live while in system mode.
+    let mq: MediaQueryList | null = null;
+    const onChange = () => {
+      try {
+        if (!localStorage.getItem("tia-theme")) {
+          const d = systemDark();
+          document.documentElement.classList.toggle("dark", d);
+          setDark(d);
+        }
+      } catch {
+        /* ignore */
+      }
+    };
+    try {
+      mq = window.matchMedia("(prefers-color-scheme: dark)");
+      mq.addEventListener("change", onChange);
+    } catch {
+      /* ignore */
+    }
     setMounted(true);
+    return () => {
+      try {
+        mq?.removeEventListener("change", onChange);
+      } catch {
+        /* ignore */
+      }
+    };
+  }, []);
+
+  const setMode = useCallback((m: ThemeMode) => {
+    const applied = applyTheme(m);
+    setModeState(applied.mode);
+    setDark(applied.dark);
   }, []);
 
   const toggle = useCallback(() => {
@@ -54,14 +120,15 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       } catch {
         /* ignore */
       }
+      setModeState(next ? "dark" : "light");
       return next;
     });
   }, []);
 
   if (!mounted) {
-    return <ThemeCtx.Provider value={{ dark, toggle }}>{children}</ThemeCtx.Provider>;
+    return <ThemeCtx.Provider value={{ dark, mode, toggle, setMode }}>{children}</ThemeCtx.Provider>;
   }
-  return <ThemeCtx.Provider value={{ dark, toggle }}>{children}</ThemeCtx.Provider>;
+  return <ThemeCtx.Provider value={{ dark, mode, toggle, setMode }}>{children}</ThemeCtx.Provider>;
 }
 
 export function useTheme() {
@@ -87,7 +154,7 @@ export function ThemeToggle({ className }: { className?: string }) {
 export const ThemeScript = () => (
   <script
     dangerouslySetInnerHTML={{
-      __html: `try{if(localStorage.getItem('tia-theme')==='dark'){document.documentElement.classList.add('dark')}}catch(e){}try{var a=localStorage.getItem('tia-accent');if(a&&a!=='lime'){document.documentElement.setAttribute('data-accent',a)}}catch(e){}`,
+      __html: `try{var t=localStorage.getItem('tia-theme');var d=t==='dark'||(!t&&matchMedia('(prefers-color-scheme: dark)').matches);if(d){document.documentElement.classList.add('dark')}}catch(e){}try{var a=localStorage.getItem('tia-accent');if(a&&a!=='lime'){document.documentElement.setAttribute('data-accent',a)}}catch(e){}`,
     }}
   />
 );

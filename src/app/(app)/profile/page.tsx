@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Camera, Check, Copy, KeyRound, LogOut, RefreshCw, Settings2, Trash2, User } from "lucide-react";
 import { Avatar, Button, Card, Field, Input, Spinner, useToast } from "@/components/ui";
-import { ACCENTS, applyAccent } from "@/components/theme";
+import { ACCENTS, applyAccent, applyTheme } from "@/components/theme";
 import {
   getApiKeyAction,
   getAvatarAction,
@@ -67,6 +67,7 @@ export default function ProfilePage() {
       setTheme(settings.theme);
       setAccent(settings.accent ?? "lime");
       applyAccent(settings.accent ?? "lime");
+      applyTheme(settings.theme);
     }
     if (keyRes.ok) setApiKey(keyRes.key ?? null);
     setLoading(false);
@@ -322,7 +323,10 @@ export default function ProfilePage() {
             ] as const).map(([t, label]) => (
               <button
                 key={t}
-                onClick={() => setTheme(t)}
+                onClick={() => {
+                  setTheme(t);
+                  applyTheme(t);
+                }}
                 className={`rounded-full px-4 py-2 text-sm font-bold transition active:scale-95 ${
                   theme === t
                     ? "bg-brand-500 text-ink"

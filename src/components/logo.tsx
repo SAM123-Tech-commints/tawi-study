@@ -1,25 +1,39 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /**
  * Brand owl. Uses public/logo.png (transparent white owl, no background) when
- * present — save the chat PNG there and it is picked up automatically.
- * Otherwise renders a matching inline SVG: white owl head on the UI accent
- * color, so it recolors with Profile → Accent color in both light and dark.
+ * it loads correctly — save the chat PNG there and it is picked up
+ * automatically. Anything else (missing file, wrong name, corrupt bytes)
+ * instantly falls back to the matching inline SVG, so a broken-image icon
+ * can never stick on screen.
  */
 export function OwlLogo({ size = 32, className = "" }: { size?: number; className?: string }) {
   const [imgOk, setImgOk] = useState(true);
+  const imgRef = useRef<HTMLImageElement>(null);
+
+  useEffect(() => {
+    // Catch images that "load" as 0×0 (corrupt/empty file): fall back too.
+    const el = imgRef.current;
+    if (el && el.complete && el.naturalWidth < 2) setImgOk(false);
+  });
+
   if (imgOk) {
     return (
       <img
+        ref={imgRef}
         src="/logo.png"
-        alt="Tawi Study"
+        alt=""
+        aria-label="Tawi Study"
         width={size}
         height={size}
         className={`rounded-[28%] object-cover ${className}`}
         style={{ background: "var(--color-brand-500)" }}
         onError={() => setImgOk(false)}
+        onLoad={(e) => {
+          if ((e.target as HTMLImageElement).naturalWidth < 2) setImgOk(false);
+        }}
       />
     );
   }
