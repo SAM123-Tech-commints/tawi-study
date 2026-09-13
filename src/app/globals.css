@@ -69,6 +69,15 @@ body {
   color: var(--color-ink);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  /* Smooth the base light↔dark switch; the toggle's circular sweep layers
+     on top of this for the full effect. */
+  transition: background-color 0.5s ease, color 0.5s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body {
+    transition: none;
+  }
 }
 
 .dark body {

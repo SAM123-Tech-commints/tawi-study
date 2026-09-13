@@ -141,18 +141,28 @@ export function useTheme() {
 export function ThemeToggle({ className }: { className?: string }) {
   const { dark, toggle } = useTheme();
 
-  const handleToggle = (e: React.MouseEvent<HTMLButtonElement>) => {
+  const handleToggle = () => {
+    // Respect users who ask for less motion — just flip, no sweep.
+    const reduce =
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduce || typeof document === "undefined") {
+      toggle();
+      return;
+    }
+
     // Light → Dark: circle expands from upper-right
     // Dark → Light: circle expands from upper-left
     const goingDark = !dark;
     const originX = goingDark ? window.innerWidth : 0;
     const originY = 0;
     const maxDim = Math.hypot(window.innerWidth, window.innerHeight) * 1.5;
-    const bgColor = goingDark ? "#000000" : "#ffffff";
+    const bgColor = goingDark ? "#0f0f0d" : "#fafaf6";
 
     const overlay = document.createElement("div");
     overlay.style.cssText = `
-      position: fixed; inset: 0; z-index: 1; pointer-events: none;
+      position: fixed; inset: 0; z-index: 2147483646; pointer-events: none;
       background: ${bgColor};
       clip-path: circle(0% at ${originX}px ${originY}px);
       transition: clip-path 0.55s cubic-bezier(0.65, 0, 0.35, 1);
@@ -170,9 +180,9 @@ export function ThemeToggle({ className }: { className?: string }) {
 
     // Clean up smoothly
     setTimeout(() => {
-      overlay.style.transition = "opacity 0.3s ease-out";
+      overlay.style.transition = "opacity 0.35s ease-out";
       overlay.style.opacity = "0";
-      setTimeout(() => overlay.remove(), 300);
+      setTimeout(() => overlay.remove(), 360);
     }, 550);
   };
 

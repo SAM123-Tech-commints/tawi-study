@@ -532,8 +532,8 @@ async function buildKitContent(content: string, cardCount: number, questionCount
     terms = 0;
   }
   const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
-  const cardsN = terms > 0 ? clamp(terms, 6, 40) : clamp(cardCount, 6, 40);
-  const questionsN = terms > 0 ? clamp(terms, 6, 30) : clamp(questionCount, 6, 30);
+  const cardsN = terms > 0 ? clamp(terms, 6, 50) : clamp(cardCount, 6, 50);
+  const questionsN = terms > 0 ? clamp(terms, 6, 40) : clamp(questionCount, 6, 40);
   const cardsDrafts = await generateCards(content, Math.max(6, cardsN));
   const questionsDrafts = await generateQuestions(content, {
     count: Math.max(6, questionsN),
@@ -561,7 +561,7 @@ export async function createKitAction(opts: {
       return { ok: false, error: "Your material is too short to build a study kit. Add a bit more content." };
     }
     const generated = await buildKitContent(
-      content.slice(0, 60000),
+      content.slice(0, 200000),
       opts.cardCount ?? 14,
       opts.questionCount ?? 12
     );
@@ -623,7 +623,7 @@ export async function regenerateKitAction(
       .limit(1);
     if (!kit) return { ok: false, error: "Study kit not found." };
 
-    const generated = await buildKitContent(kit.content.slice(0, 60000), 14, 12);
+    const generated = await buildKitContent(kit.content.slice(0, 200000), 14, 12);
     await db.delete(cards).where(eq(cards.kitId, kit.id));
     await db.delete(kitQuestions).where(eq(kitQuestions.kitId, kit.id));
     await db
@@ -718,7 +718,7 @@ export async function regenerateNotesAction(kitId: string): Promise<{ ok: boolea
       .where(and(eq(kits.id, kitId), eq(kits.userId, user.id)))
       .limit(1);
     if (!kit) return { ok: false, error: "Study kit not found." };
-    const notes = await generateNotes(kit.content.slice(0, 60000));
+    const notes = await generateNotes(kit.content.slice(0, 200000));
     await db.update(kits).set({ notes, updatedAt: new Date() }).where(eq(kits.id, kit.id));
     revalidatePath(`/kits/${kit.id}`);
     return { ok: true };
@@ -747,7 +747,7 @@ export async function suggestGuideTermsAction(kitId: string): Promise<{ ok: bool
     }
 
     // 2) AI summary key terms (uses your key when configured).
-    const summary = await generateSummary(kit.content.slice(0, 60000));
+    const summary = await generateSummary(kit.content.slice(0, 200000));
     const terms = (summary.keyTerms ?? []).map((k) => k.term).filter((t) => t && t.length > 2).slice(0, 12);
     if (terms.length) return { ok: true, terms, ai: aiAvailable() };
 
@@ -772,7 +772,7 @@ export async function cleanupExactTextAction(kitId: string): Promise<{ ok: boole
       .where(and(eq(kits.id, kitId), eq(kits.userId, user.id)))
       .limit(1);
     if (!kit) return { ok: false, error: "Study kit not found." };
-    const { text, ai } = await cleanupExactText(kit.content.slice(0, 60000));
+    const { text, ai } = await cleanupExactText(kit.content.slice(0, 200000));
     if (!text.trim()) return { ok: false, error: "Could not clean this text." };
     await db.update(kits).set({ content: text, updatedAt: new Date() }).where(eq(kits.id, kit.id));
     revalidatePath(`/kits/${kit.id}`);

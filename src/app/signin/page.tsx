@@ -7,15 +7,23 @@ import { ArrowRight } from "lucide-react";
 import { googleSigninAction, guestSigninAction, signinAction, signupAction } from "@/lib/actions";
 import { Button, Field, Input, Spinner, useToast } from "@/components/ui";
 import { OwlLogo } from "@/components/logo";
-import { ThemeToggle } from "@/components/theme";
+import { ThemeToggle, useTheme } from "@/components/theme";
 
 declare global {
   interface Window {
     google?: {
       accounts: {
         id: {
-          initialize: (opts: { client_id: string; callback: (res: { credential?: string }) => void }) => void;
+          initialize: (opts: {
+            client_id: string;
+            callback: (res: { credential?: string }) => void;
+            auto_select?: boolean;
+            use_fedcm_for_prompt?: boolean;
+            cancel_on_tap_outside?: boolean;
+          }) => void;
           prompt: () => void;
+          renderButton: (parent: HTMLElement, opts: Record<string, unknown>) => void;
+          disableAutoSelect: () => void;
         };
       };
     };
@@ -39,6 +47,8 @@ function SigninInner() {
   const [error, setError] = useState("");
   const [googleId, setGoogleId] = useState<string | null>(null);
   const submitted = useRef(false);
+  const googleBtnRef = useRef<HTMLDivElement>(null);
+  const { dark } = useTheme();
 
   // Expose the Google client ID (public value) so the button can render.
   useEffect(() => {
@@ -119,53 +129,80 @@ function SigninInner() {
     }
   };
 
-  const google = async () => {
-    if (!googleId) {
-      toast("Google sign-in needs NEXT_PUBLIC_GOOGLE_CLIENT_ID — see Profile → Collaboration key docs.", "error");
-      return;
-    }
-    if (submitted.current) return;
-    // Load Google Identity Services on demand (no extra JS until clicked).
-    if (!window.google) {
-      await new Promise<void>((resolve, reject) => {
-        const s = document.createElement("script");
-        s.src = "https://accounts.google.com/gsi/client";
-        s.async = true;
-        s.onload = () => resolve();
-        s.onerror = () => reject(new Error("load"));
-        document.head.appendChild(s);
-      }).catch(() => {
-        toast("Could not load Google. Check your connection.", "error");
-      });
-    }
-    if (!window.google) return;
-    submitted.current = true;
-    setError("");
-    setLoading(true);
-    try {
-      const credential: string = await new Promise((resolve, reject) => {
-        window.google!.accounts.id.initialize({
-          client_id: googleId,
-          callback: (res) => (res.credential ? resolve(res.credential) : reject(new Error("cancelled"))),
-        });
-        window.google!.accounts.id.prompt();
-        // If the user closes the popup, unstick after 60s.
-        setTimeout(() => reject(new Error("timeout")), 60000);
-      });
-      const res = await googleSigninAction(credential);
-      if (!res.ok) {
-        setError(res.error ?? "Google sign-in failed.");
-        return;
+  // Render Google's official button once the client ID is known. This uses
+  // Google's reliable popup/FedCM flow (works even when third-party cookies
+  // are blocked) instead of the flaky One-Tap prompt, and returns the same
+  // id-token the server verifies.
+  useEffect(() => {
+    if (!googleId) return;
+    let cancelled = false;
+
+    const handleCredential = async (resp: { credential?: string }) => {
+      if (!resp.credential || submitted.current) return;
+      submitted.current = true;
+      setError("");
+      setLoading(true);
+      try {
+        const res = await googleSigninAction(resp.credential);
+        if (!res.ok) {
+          setError(res.error ?? "Google sign-in failed. Please try again.");
+          return;
+        }
+        toast("Signed in with Google — welcome! 🎉");
+        goNext(res.role);
+      } catch {
+        setError("Google sign-in failed. Please try again.");
+      } finally {
+        setLoading(false);
+        submitted.current = false;
       }
-      toast("Signed in with Google — welcome! 🎉");
-      goNext(res.role);
-    } catch {
-      setError("Google sign-in was cancelled.");
-    } finally {
-      setLoading(false);
-      submitted.current = false;
+    };
+
+    const render = () => {
+      if (cancelled || !window.google?.accounts?.id || !googleBtnRef.current) return;
+      window.google.accounts.id.initialize({
+        client_id: googleId,
+        callback: handleCredential,
+        auto_select: false,
+        use_fedcm_for_prompt: true,
+        cancel_on_tap_outside: true,
+      });
+      const el = googleBtnRef.current;
+      el.innerHTML = "";
+      const width = Math.min(400, Math.max(240, el.offsetWidth || 360));
+      window.google.accounts.id.renderButton(el, {
+        type: "standard",
+        theme: dark ? "filled_black" : "outline",
+        size: "large",
+        text: "continue_with",
+        shape: "pill",
+        logo_alignment: "center",
+        width,
+      });
+    };
+
+    if (window.google?.accounts?.id) {
+      render();
+      return () => {
+        cancelled = true;
+      };
     }
-  };
+    let s = document.querySelector<HTMLScriptElement>('script[data-gsi="1"]');
+    if (!s) {
+      s = document.createElement("script");
+      s.src = "https://accounts.google.com/gsi/client";
+      s.async = true;
+      s.defer = true;
+      s.dataset.gsi = "1";
+      document.head.appendChild(s);
+    }
+    s.addEventListener("load", render);
+    return () => {
+      cancelled = true;
+      s?.removeEventListener("load", render);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [googleId, dark]);
 
   return (
     <div className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-paper px-4 py-10 text-ink dark:bg-paper-dark dark:text-cream">
@@ -262,21 +299,28 @@ function SigninInner() {
             <span className="h-px flex-1 bg-ink/10 dark:bg-cream/10" /> or <span className="h-px flex-1 bg-ink/10 dark:bg-cream/10" />
           </div>
 
-          {/* Continue with Google — free, no card. Activates once
-              NEXT_PUBLIC_GOOGLE_CLIENT_ID is set; otherwise explains setup. */}
-          <Button variant="outline" className="w-full" onClick={google} disabled={loading}>
-            <svg width="17" height="17" viewBox="0 0 24 24" aria-hidden>
-              <path fill="#4285F4" d="M23.5 12.3c0-.9-.1-1.5-.3-2.3H12v4.5h6.5c-.1 1.1-.8 2.7-2.4 3.8l-.1.1 3.5 2.7.2.1c2.2-2 3.8-5 3.8-8.9z" />
-              <path fill="#34A853" d="M12 24c3.2 0 5.9-1.1 7.9-2.9l-3.8-2.9c-1 .7-2.4 1.2-4.1 1.2-3.1 0-5.8-2.1-6.8-5l-.1.1-3.6 2.8v.1C3.5 21.4 7.5 24 12 24z" />
-              <path fill="#FBBC05" d="M5.2 14.4c-.2-.7-.4-1.5-.4-2.4s.1-1.7.4-2.4l-.1-.1-3.6-2.8-.1.1C.5 8.7 0 10.3 0 12s.5 3.3 1.4 4.7l3.8-2.3z" />
-              <path fill="#EA4335" d="M12 4.7c1.8 0 3 .8 3.7 1.4l3.3-3.2C17.9 1.1 15.2 0 12 0 7.5 0 3.5 2.6 1.4 6.8l3.8 3c1-2.9 3.7-5.1 6.8-5.1z" />
-            </svg>
-            Continue with Google
-          </Button>
-          {!googleId && (
-            <p className="mt-2 text-center text-[11px] text-ink/40 dark:text-cream/40">
-              Admins: add <code className="rounded bg-ink/5 px-1 dark:bg-cream/10">NEXT_PUBLIC_GOOGLE_CLIENT_ID</code> to enable this button.
-            </p>
+          {/* Continue with Google — Google renders its own reliable button
+              here once NEXT_PUBLIC_GOOGLE_CLIENT_ID is set; otherwise we show a
+              disabled placeholder with setup instructions. */}
+          {googleId ? (
+            <div className="flex min-h-[44px] justify-center">
+              <div ref={googleBtnRef} className="w-full" />
+            </div>
+          ) : (
+            <>
+              <Button variant="outline" className="w-full" disabled>
+                <svg width="17" height="17" viewBox="0 0 24 24" aria-hidden>
+                  <path fill="#4285F4" d="M23.5 12.3c0-.9-.1-1.5-.3-2.3H12v4.5h6.5c-.1 1.1-.8 2.7-2.4 3.8l-.1.1 3.5 2.7.2.1c2.2-2 3.8-5 3.8-8.9z" />
+                  <path fill="#34A853" d="M12 24c3.2 0 5.9-1.1 7.9-2.9l-3.8-2.9c-1 .7-2.4 1.2-4.1 1.2-3.1 0-5.8-2.1-6.8-5l-.1.1-3.6 2.8v.1C3.5 21.4 7.5 24 12 24z" />
+                  <path fill="#FBBC05" d="M5.2 14.4c-.2-.7-.4-1.5-.4-2.4s.1-1.7.4-2.4l-.1-.1-3.6-2.8-.1.1C.5 8.7 0 10.3 0 12s.5 3.3 1.4 4.7l3.8-2.3z" />
+                  <path fill="#EA4335" d="M12 4.7c1.8 0 3 .8 3.7 1.4l3.3-3.2C17.9 1.1 15.2 0 12 0 7.5 0 3.5 2.6 1.4 6.8l3.8 3c1-2.9 3.7-5.1 6.8-5.1z" />
+                </svg>
+                Continue with Google
+              </Button>
+              <p className="mt-2 text-center text-[11px] text-ink/40 dark:text-cream/40">
+                Admins: add <code className="rounded bg-ink/5 px-1 dark:bg-cream/10">NEXT_PUBLIC_GOOGLE_CLIENT_ID</code> to enable this.
+              </p>
+            </>
           )}
 
           <div className="mt-3">
