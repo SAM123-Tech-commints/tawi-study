@@ -46,7 +46,7 @@ import {
 } from "@/lib/auth";
 import { initialSrs, schedule } from "@/lib/srs";
 import { SAMPLE_BIO } from "@/lib/sample";
-import { extractTerms, normalize, stripBoilerplate } from "@/lib/text";
+import { boldTerms, extractTerms, keyTerms, normalize, stripBoilerplate } from "@/lib/text";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -738,10 +738,24 @@ export async function suggestGuideTermsAction(kitId: string): Promise<{ ok: bool
       .where(and(eq(kits.id, kitId), eq(kits.userId, user.id)))
       .limit(1);
     if (!kit) return { ok: false, error: "Study kit not found." };
+
+    // 1) Source emphasis first — the author's own bold/italic terms are the
+    //    most faithful highlights and never require an API call.
+    const emphasized = boldTerms(kit.content).slice(0, 12);
+    if (emphasized.length >= 4) {
+      return { ok: true, terms: emphasized, ai: false };
+    }
+
+    // 2) AI summary key terms (uses your key when configured).
     const summary = await generateSummary(kit.content.slice(0, 60000));
     const terms = (summary.keyTerms ?? []).map((k) => k.term).filter((t) => t && t.length > 2).slice(0, 12);
-    if (!terms.length) return { ok: false, error: "No clear terms found — add your own below." };
-    return { ok: true, terms, ai: aiAvailable() };
+    if (terms.length) return { ok: true, terms, ai: aiAvailable() };
+
+    // 3) Local key terms.
+    const local = keyTerms(kit.content, 12).map((k) => k.term).filter(Boolean).slice(0, 12);
+    if (local.length) return { ok: true, terms: local, ai: false };
+
+    return { ok: false, error: "No clear terms found — add your own below." };
   });
 }
 
@@ -1465,81 +1479,19 @@ export async function fetchUrlAction(url: string): Promise<{
       u.hostname === "youtu.be" ? u.pathname.slice(1).split("/")[0] : u.searchParams.get("v");
     if (!videoId) return { ok: false, error: "Could not parse YouTube video ID." };
 
-    // 1) Get metadata via oEmbed
+    // Try every transcript source (library → TranscriptAPI → InnerTube →
+    // caption-track scrape → timedtext) and keep the longest result.
+    let transcript = "";
     let title = "YouTube video";
     let author = "";
     try {
-      const ores = await fetch(
-        `https://www.youtube.com/oembed?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}`)}&format=json`,
-        { signal: AbortSignal.timeout(8000) }
-      );
-      if (ores.ok) {
-        const d = await ores.json();
-        title = d.title ?? title;
-        author = d.author_name ?? "";
-      }
-    } catch {}
-
-    // 2) Try to get transcript via youtube-transcript (try multiple languages)
-    let transcript = "";
-    const tryLangs = ["en", "en-US", "en-GB", "auto"];
-    for (const lang of tryLangs) {
-      if (transcript.length > 200) break;
-      try {
-        const { YoutubeTranscript } = await import("youtube-transcript");
-        const items = await YoutubeTranscript.fetchTranscript(videoId, { lang });
-        const joined = items.map((i: { text: string }) => i.text).join(" ");
-        if (joined.length > transcript.length) transcript = joined;
-      } catch {}
-    }
-
-    // 2b) Backup: TranscriptAPI.com (server-side key, never exposed to the browser)
-    if (transcript.length <= 200) {
-      const tapKey = (process.env.TRANSCRIPT_API_KEY ?? "").trim();
-      if (tapKey) {
-        try {
-          const fullUrl = `https://www.youtube.com/watch?v=${videoId}`;
-          const tapRes = await fetch(
-            `https://transcriptapi.com/api/v2/youtube/transcript?video_url=${encodeURIComponent(fullUrl)}`,
-            {
-              headers: { Authorization: `Bearer ${tapKey}` },
-              signal: AbortSignal.timeout(20000),
-            }
-          );
-          if (tapRes.ok) {
-            const tap = await tapRes.json();
-            const segs = Array.isArray(tap.transcript) ? tap.transcript : tap.segments ?? [];
-            const joined = segs
-              .map((s: { text?: string }) => String(s?.text ?? "").trim())
-              .filter(Boolean)
-              .join(" ");
-            if (joined.length > 200) {
-              transcript = joined;
-              if (!title || title === "YouTube video") {
-                const mt = tap?.metadata?.title ?? tap?.title;
-                if (typeof mt === "string" && mt.trim()) title = mt.trim();
-              }
-            }
-          } else if (tapRes.status === 402) {
-            console.warn("[fetchUrl] TranscriptAPI credits exhausted (402).");
-          } else if (tapRes.status === 404) {
-            console.warn("[fetchUrl] TranscriptAPI: no transcript (404).");
-          }
-        } catch (err) {
-          console.warn("[fetchUrl] TranscriptAPI backup failed:", err instanceof Error ? err.message : err);
-        }
-      }
-    }
-
-    // 2c) No-key fallback: caption tracks embedded in the watch page
-    if (transcript.length <= 200) {
-      try {
-        const { fetchCaptionTracksTranscript } = await import("@/lib/youtube");
-        const viaTracks = await fetchCaptionTracksTranscript(videoId);
-        if (viaTracks.length > 200) transcript = viaTracks;
-      } catch (err) {
-        console.warn("[fetchUrl] captionTracks fallback failed:", err instanceof Error ? err.message : err);
-      }
+      const { extractYouTubeTranscript } = await import("@/lib/youtube");
+      const r = await extractYouTubeTranscript(videoId);
+      transcript = r.text;
+      title = r.title;
+      author = r.author;
+    } catch (err) {
+      console.warn("[fetchUrl] transcript chain failed:", err instanceof Error ? err.message : err);
     }
 
     if (transcript.length > 200) {
@@ -1551,7 +1503,7 @@ export async function fetchUrlAction(url: string): Promise<{
       };
     }
 
-    // 3) Fallback: try to scrape the page description
+    // Fallback: try to scrape the page description
     let description = "";
     try {
       const pageRes = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
@@ -1610,47 +1562,25 @@ export async function fetchUrlAction(url: string): Promise<{
   if (res.status === 404) return { ok: false, error: "Page not found (HTTP 404). Check the URL." };
   if (!res.ok) return { ok: false, error: `Could not fetch the page (HTTP ${res.status}).` };
   const contentType = res.headers.get("content-type") ?? "";
+  if (contentType && !/html|xml|text\/plain/i.test(contentType)) {
+    return { ok: false, error: "That link isn't a readable web page (it looks like a file or feed). Paste the content instead." };
+  }
   const html = await res.text();
 
-// Extract title
-  const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-  const ogTitle = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i);
-  const ogDescription = html.match(/<meta[^>]*property=["']og:description["'][^>]*content=["']([^"']+)["']/i);
-  const pageTitle = ogTitle?.[1]?.trim() ?? titleMatch?.[1]?.trim() ?? new URL(url).hostname;
-
-  // Try to extract article/main content first, fallback to full body
-  let contentHtml = html;
-  const articleMatch = html.match(/<article[^>]*>([\s\S]*?)<\/article>/i);
-  const mainMatch = html.match(/<main[^>]*>([\s\S]*?)<\/main>/i);
-  if (articleMatch) contentHtml = articleMatch[1];
-  else if (mainMatch) contentHtml = mainMatch[1];
-
-  // Strip scripts, styles, nav, footer, header
-  const text = contentHtml
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<nav[\s\S]*?<\/nav>/gi, " ")
-    .replace(/<footer[\s\S]*?<\/footer>/gi, " ")
-    .replace(/<header[\s\S]*?<\/header>/gi, " ")
-    .replace(/<aside[\s\S]*?<\/aside>/gi, " ")
-    .replace(/<[^>]+>/g, "\n")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&#39;/g, "'")
-    .replace(/&quot;/g, '"')
-    .replace(/&#\d+;/g, "")
-    .replace(/[ \t]+/g, " ")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+  // Structure-preserving extraction: headings, bullets and bold survive, so the
+  // scraped page renders like the source — the same treatment PDFs get.
+  const { htmlToStructuredText, extractTitle, extractDescription } = await import("@/lib/html");
+  const pageTitle = extractTitle(html, new URL(url).hostname);
+  const ogDescription = extractDescription(html);
+  const text = htmlToStructuredText(html);
 
   if (text.length < 100)
     return { ok: false, error: "Could not extract readable text from this page. Try pasting the content instead." };
 
+  // Lead with the summary only when the body didn't already capture it.
   const combined =
-    ogDescription?.[1]?.trim()
-      ? `${ogDescription[1].trim()}\n\n${text.slice(0, 50000 - ogDescription[1].trim().length - 2)}`
+    ogDescription && !text.slice(0, 600).includes(ogDescription.slice(0, 60))
+      ? `${ogDescription}\n\n${text}`.slice(0, 50000)
       : text.slice(0, 50000);
   return {
     ok: true,

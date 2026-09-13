@@ -290,6 +290,30 @@ export function extractTerms(text: string): TermDef[] {
   return out;
 }
 
+/** Extract emphasized terms (from **bold** and *italic* markers) in source
+ *  order — these are the author's own "this matters" signal, so they make the
+ *  best highlight terms for the Exact-text view. */
+export function boldTerms(text: string): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const push = (t: string) => {
+    const term = cleanTerm(t);
+    if (term.length < 3 || term.length > 60 || isBadTerm(term)) return;
+    const key = term.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(term);
+  };
+  for (const line of normalize(text).split("\n")) {
+    const boldRe = /\*\*([^*]{2,60}?)\*\*/g;
+    let m: RegExpExecArray | null;
+    while ((m = boldRe.exec(line)) !== null) push(m[1]);
+    const italRe = /(^|[\s(])\*([^*\n]{2,50}?)\*(?=[\s).,:;\-–—]|$)/g;
+    while ((m = italRe.exec(line)) !== null) push(m[2]);
+  }
+  return out;
+}
+
 export function keyTerms(text: string, n: number): { term: string; meaning: string }[] {
   const terms = extractTerms(stripBoilerplate(text));
   // Exam-ready first: multi-word concepts with full-sentence definitions beat
@@ -333,7 +357,18 @@ export function keyTerms(text: string, n: number): { term: string; meaning: stri
 /* ------------------------------ cards ----------------------------- */
 
 export function makeCardsLocal(text: string, count: number): TermDef[] {
-  const terms = extractTerms(text);
+  // Rank the source's own terms so the cleanest cards come first: multi-word
+  // exam concepts, backed by a definition that reads as one complete sentence.
+  const cardScore = (t: TermDef): number => {
+    let s = 0;
+    if (t.term.includes(" ")) s += 3; // a real concept, not a lone word
+    const wc = t.definition.split(/\s+/).length;
+    if (wc >= 6 && wc <= 45) s += 2; // a sentence, not a fragment or a wall
+    if (/[.!?]$/.test(t.definition)) s += 1; // closes like a sentence
+    if (t.term.length <= 42) s += 1; // concise front
+    return s;
+  };
+  const terms = [...extractTerms(text)].sort((a, b) => cardScore(b) - cardScore(a));
   const out = terms.slice(0, count).map((t) => ({ term: t.term, definition: t.definition }));
   if (out.length >= count) return out;
 
@@ -374,7 +409,9 @@ export function makeCardsLocal(text: string, count: number): TermDef[] {
     const key = term.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push({ term: term.slice(0, 60), definition: s });
+    // Close the sentence so the back reads like a real definition, not a
+    // mid-paragraph fragment.
+    out.push({ term: term.slice(0, 60), definition: polishDefinition(s) });
   }
   return out;
 }

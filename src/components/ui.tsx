@@ -454,10 +454,38 @@ function renderInline(text: string, key: number, highlights?: string[]): ReactNo
 
 /** Wrap detected keyword phrases in <mark> so exact text keeps every word but key terms pop. */
 function applyHighlights(text: string, key: string, highlights?: string[]): ReactNode {
-  const terms = (highlights ?? []).map((t) => t.trim()).filter((t) => t.length > 2);
+  // Dedupe (case-insensitive) and match the LONGEST phrases first so
+  // "operating system" wins over "system" when both are highlighted.
+  const seen = new Set<string>();
+  const terms = (highlights ?? [])
+    .map((t) => t.trim())
+    .filter((t) => {
+      const k = t.toLowerCase();
+      if (t.length <= 2 || seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    })
+    .sort((a, b) => b.length - a.length)
+    .slice(0, 60);
   if (!terms.length) return <>{text}</>;
   const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const re = new RegExp(`(${terms.map(esc).join("|")})`, "gi");
+  // Word-boundary each term (only where its edge is a word char) so a short
+  // term never lights up inside a bigger word ("bus" ≠ "business"), while an
+  // optional plural still matches ("CPU" also marks "CPUs"). Odd terms like
+  // "I/O" or "C++" are matched verbatim.
+  const pattern = terms
+    .map((t) => {
+      const left = /^\w/.test(t) ? "\\b" : "";
+      const right = /\w$/.test(t) ? "(?:e?s)?\\b" : "";
+      return left + esc(t) + right;
+    })
+    .join("|");
+  let re: RegExp;
+  try {
+    re = new RegExp(`(${pattern})`, "gi");
+  } catch {
+    return <>{text}</>;
+  }
   const chunks = text.split(re);
   if (chunks.length === 1) return <>{text}</>;
   return (

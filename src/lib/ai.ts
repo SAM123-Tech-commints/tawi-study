@@ -412,28 +412,53 @@ export async function generateNotes(content: string): Promise<NotesDraft> {
 
 /* ------------------------- exact-text cleanup ------------------------- */
 
-const CLEANUP_SYSTEM = `You are Tawi, a precise document formatter. Clean up study material formatting for an "exact text" reviewer view.
+const CLEANUP_SYSTEM = `You are Tawi, a precise document formatter. Recover the clean, faithful "exact text" of a study document from messy extracted text.
 ABSOLUTE RULES:
-- Output EVERYTHING from the input. Never drop, shorten, summarize or skip any sentence, bullet, number or name. Completeness beats beauty.
-- Fix broken spacing (words glued together or split by stray spaces/line breaks), collapse runs of blank lines to at most one, and put each bullet/step/numbered point on its own line starting with "- " or "1. " etc.
-- Keep **bold** markers exactly where they are; if a "Term — definition" or "Term: definition" pair is recognizable, make sure it reads as "Term — definition" on one line.
-- Plain text with markdown only (## headings, - bullets, **bold**). No commentary, no extra sections, no outside information.
+- Preserve EVERY word, number, name, date, formula and bullet exactly. NEVER summarize, paraphrase, shorten, reorder or omit anything. If a word is garbled, keep the closest readable form rather than dropping it.
+- Fix extraction damage only: glue words that were split by stray spaces ("pho tosynthesis" → "photosynthesis"), split words that were glued ("OperatingSystems" → "Operating Systems"), repair hyphenation across line breaks ("photo- synthesis" → "photosynthesis"), and collapse runs of blank lines to a single blank line.
+- Rebuild structure: a heading stays its own line; every bullet/step/numbered point starts its own line with "- " or its original "1." / "a)" marker; a "Term — definition" or "Term: definition" pair stays on one line.
+- Preserve and place emphasis markers where the source had them: **bold** for bold text, *italic* for italic text. If a term and its definition are recognizable, bold the term.
+- Plain text with markdown only (## headings, - bullets, **bold**, *italic*). No commentary, no headings you invented, no extra sections, no outside information.
 Respond with the cleaned text ONLY — no JSON, no quotes, no preamble.`;
+
+/** Fraction of the source's word tokens that survive in the output (0–1).
+ *  Case, spacing and added markdown markers are ignored, so only genuine word
+ *  loss counts. This catches an AI that summarizes or paraphrases even when it
+ *  keeps the character count up by adding "##", "-" and "**". */
+function wordRetention(source: string, output: string): number {
+  const tokenize = (s: string) => s.toLowerCase().match(/[a-z0-9]+/g) ?? [];
+  const src = tokenize(source);
+  if (!src.length) return 1;
+  const have = new Map<string, number>();
+  for (const w of tokenize(output)) have.set(w, (have.get(w) ?? 0) + 1);
+  let kept = 0;
+  for (const w of src) {
+    const n = have.get(w) ?? 0;
+    if (n > 0) {
+      kept++;
+      have.set(w, n - 1);
+    }
+  }
+  return kept / src.length;
+}
 
 export async function cleanupExactText(content: string): Promise<{ text: string; ai: boolean }> {
   if (aiAvailable()) {
     try {
       const out = await callAI(
         CLEANUP_SYSTEM,
-        `Clean this study material's formatting (keep every word):\n\n${clip(content)}`,
+        `Restore the faithful exact text of this study material (keep every single word):\n\n${clip(content)}`,
         false
       );
       const cleaned = out.replace(/```(text|markdown)?/gi, "").replace(/```/g, "").trim();
-      // Safety: an AI that drops more than 30% of the characters is hallucinating brevity.
-      if (cleaned.length > 20 && cleaned.length >= normalize(content).length * 0.7) {
+      // Faithful = every word survives. Compare WORD tokens (ignoring the
+      // markdown the model adds) instead of raw length, so summarizing or
+      // paraphrasing is rejected and only formatting is allowed to change.
+      // ≥90% leaves headroom for legitimate de-hyphenation/word-regluing.
+      if (cleaned.length > 20 && wordRetention(normalize(content), cleaned) >= 0.9) {
         return { text: cleaned, ai: true };
       }
-      throw new Error("AI cleanup dropped too much content");
+      throw new Error("AI cleanup dropped or changed too many words");
     } catch (err) {
       warn("cleanupExactText", err);
     }

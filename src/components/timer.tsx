@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { GripVertical, Minimize2, Pause, Play, RotateCcw, Settings, Square, Volume2, VolumeX, X } from "lucide-react";
+import { GripVertical, Minimize2, Pause, Play, Repeat, RotateCcw, Settings, Square, Volume2, VolumeX, X } from "lucide-react";
 import { Button } from "@/components/ui";
 
 type TimerMode = "work" | "break" | "longBreak";
@@ -69,7 +69,10 @@ export function PomodoroTimer({
   });
   const [round, setRound] = useState(saved?.round ?? 1);
   const [muted, setMuted] = useState(false);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Auto-continue is what makes it a real Pomodoro: focus → break → focus …
+  // rolls on its own. A toggle lets someone pause the auto-flow if they want to
+  // start each phase by hand.
+  const [autoContinue, setAutoContinue] = useState(true);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // Persist every tick/change so a reload or navigation never loses the session.
@@ -84,10 +87,25 @@ export function PomodoroTimer({
     }
   }, [mode, secondsLeft, round, running]);
 
-  // Reset when settings change
+  // Refit the current phase ONLY when the durations actually change while idle.
+  // (The old version keyed on `running`, so hitting Pause refilled the clock to
+  // full and a restored mid-session was wiped on mount — both fixed here.)
+  const settingsRef = useRef(settings);
   useEffect(() => {
-    if (!running) {
-      setSecondsLeft(mode === "work" ? settings.work * 60 : mode === "break" ? settings.break * 60 : settings.longBreak * 60);
+    const prev = settingsRef.current;
+    settingsRef.current = settings;
+    const changed =
+      prev.work !== settings.work ||
+      prev.break !== settings.break ||
+      prev.longBreak !== settings.longBreak;
+    if (changed && !running) {
+      setSecondsLeft(
+        mode === "work"
+          ? settings.work * 60
+          : mode === "break"
+          ? settings.break * 60
+          : settings.longBreak * 60
+      );
     }
   }, [settings, mode, running]);
 
@@ -105,40 +123,48 @@ export function PomodoroTimer({
     } catch {}
   }, [muted]);
 
+  // Tick once a second. The interval only cares whether we're running, so it is
+  // NOT torn down and rebuilt on every mode/round change (that was what made the
+  // old timer stutter). It just counts the current phase down to zero.
   useEffect(() => {
-    if (!running) {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-      return;
-    }
-    intervalRef.current = setInterval(() => {
-      setSecondsLeft((prev) => {
-        if (prev <= 1) {
-          clearInterval(intervalRef.current!);
-          playSound();
-          // Auto-switch mode
-          if (mode === "work") {
-            if (round >= settings.rounds) {
-              setMode("longBreak");
-              setSecondsLeft(settings.longBreak * 60);
-              setRound(1);
-            } else {
-              setMode("break");
-              setSecondsLeft(settings.break * 60);
-            }
-          } else {
-            setMode("work");
-            setSecondsLeft(settings.work * 60);
-            if (mode === "longBreak") setRound(1);
-            else setRound((r) => r + 1);
-          }
-          setRunning(false);
-          return 0;
-        }
-        return prev - 1;
-      });
+    if (!running) return;
+    const id = setInterval(() => {
+      setSecondsLeft((s) => (s > 0 ? s - 1 : 0));
     }, 1000);
-    return () => clearInterval(intervalRef.current!);
-  }, [running, mode, round, settings, playSound]);
+    return () => clearInterval(id);
+  }, [running]);
+
+  // When the current phase reaches zero, chime and roll into the next one.
+  // Because `running` stays true, the next phase starts on its own — a real
+  // Pomodoro cycle (focus → break → focus → … → long break → focus).
+  useEffect(() => {
+    if (!running || secondsLeft > 0) return;
+    playSound();
+    const next = () => {
+      if (mode === "work") {
+        if (round >= settings.rounds) {
+          setMode("longBreak");
+          setSecondsLeft(settings.longBreak * 60);
+          setRound(1);
+        } else {
+          setMode("break");
+          setSecondsLeft(settings.break * 60);
+        }
+      } else if (mode === "longBreak") {
+        setMode("work");
+        setSecondsLeft(settings.work * 60);
+        setRound(1);
+      } else {
+        // A finished break advances the round counter and returns to focus.
+        setMode("work");
+        setSecondsLeft(settings.work * 60);
+        setRound((r) => r + 1);
+      }
+    };
+    next();
+    // If the user turned off auto-flow, land on the next phase but wait for a tap.
+    if (!autoContinue) setRunning(false);
+  }, [secondsLeft, running, mode, round, settings, autoContinue, playSound]);
 
   const reset = () => {
     setRunning(false);
@@ -261,10 +287,29 @@ export function PomodoroTimer({
         )}
       </div>
 
-      {/* Round indicator */}
-      <p className="text-[12px] font-medium text-ink/45 dark:text-cream/45">
-        Round {round} / {settings.rounds}
-      </p>
+      {/* Round indicator + auto-continue toggle */}
+      <div className="flex items-center gap-2 text-[12px] font-medium text-ink/45 dark:text-cream/45">
+        <span>
+          Round {round} / {settings.rounds}
+        </span>
+        <span aria-hidden>·</span>
+        <button
+          type="button"
+          onClick={() => setAutoContinue((v) => !v)}
+          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold transition ${
+            autoContinue
+              ? "bg-brand-500/15 text-brand-700 dark:text-brand-300"
+              : "text-ink/40 hover:text-ink dark:text-cream/40 dark:hover:text-cream"
+          }`}
+          title={
+            autoContinue
+              ? "Auto-continue is ON — phases roll automatically like a real Pomodoro"
+              : "Auto-continue is OFF — the next phase waits for you to tap Start"
+          }
+        >
+          <Repeat size={11} /> Auto {autoContinue ? "on" : "off"}
+        </button>
+      </div>
     </div>
   );
 }
@@ -335,46 +380,79 @@ export function TimerPopup({
     }
   }, [min, pos]);
 
-  const clampPos = (x: number, y: number) => ({
-    x: Math.max(8, Math.min(window.innerWidth - 316, x)),
-    y: Math.max(8, Math.min(window.innerHeight - 220, y)),
-  });
-
-  // Professional drag, shared by the full card and the mini pill:
-  // 1:1 tracking while held (no transition lag), smooth glide for every
-  // programmatic move, and double-click glides back to the default dock.
   const [dragging, setDragging] = useState(false);
 
+  // Keep the popup fully on-screen given its real measured size.
+  const clampPos = (x: number, y: number, w = 300, h = 140) => ({
+    x: Math.max(8, Math.min(window.innerWidth - w - 8, x)),
+    y: Math.max(8, Math.min(window.innerHeight - h - 8, y)),
+  });
+
+  // If the viewport shrinks (rotate / resize), pull a free-floating popup back
+  // into view so it can never get stranded off an edge.
+  useEffect(() => {
+    if (!pos) return;
+    const onResize = () =>
+      setPos((p) =>
+        p
+          ? {
+              x: Math.max(8, Math.min(window.innerWidth - 308, p.x)),
+              y: Math.max(8, Math.min(window.innerHeight - 148, p.y)),
+            }
+          : p
+      );
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [pos]);
+
+  // Rock-solid drag: we capture the pointer on the grab handle, so every move
+  // event is delivered to that element even when the cursor races outside the
+  // popup or off the window entirely. 1:1 tracking on mouse, touch and pen.
   const beginDrag = (e: React.PointerEvent) => {
     // Never start a drag from a button — let buttons click.
     if ((e.target as HTMLElement).closest("button")) return;
     e.preventDefault();
+    const el = e.currentTarget as HTMLElement;
+    const pointerId = e.pointerId;
     const startX = e.clientX;
     const startY = e.clientY;
-    const host = (e.currentTarget as HTMLElement).closest("[data-timer-popup]") as HTMLElement | null;
+    const host = el.closest("[data-timer-popup]") as HTMLElement | null;
     const r = host?.getBoundingClientRect();
+    const w = r?.width ?? 300;
+    const h = r?.height ?? 140;
     // Anchor to where the popup actually is (docked corner or free position).
-    const baseX = pos?.x ?? r?.left ?? window.innerWidth - 320;
-    const baseY = pos?.y ?? r?.top ?? window.innerHeight - 200;
+    const baseX = pos?.x ?? r?.left ?? window.innerWidth - w - 20;
+    const baseY = pos?.y ?? r?.top ?? window.innerHeight - h - 20;
     let moved = false;
+    try {
+      el.setPointerCapture(pointerId);
+    } catch {
+      /* older browsers still work via the element listeners below */
+    }
     const move = (ev: PointerEvent) => {
+      const dx = ev.clientX - startX;
+      const dy = ev.clientY - startY;
       if (!moved) {
-        if (Math.hypot(ev.clientX - startX, ev.clientY - startY) < 6) return;
+        if (Math.hypot(dx, dy) < 5) return; // ignore a shaky click
         moved = true;
         setDragging(true);
       }
-      setPos(clampPos(baseX + ev.clientX - startX, baseY + ev.clientY - startY));
+      setPos(clampPos(baseX + dx, baseY + dy, w, h));
     };
-    const up = () => {
+    const end = () => {
       setDragging(false);
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointercancel", up);
+      try {
+        el.releasePointerCapture(pointerId);
+      } catch {
+        /* ignore */
+      }
+      el.removeEventListener("pointermove", move);
+      el.removeEventListener("pointerup", end);
+      el.removeEventListener("pointercancel", end);
     };
-    // Window-level tracking: fast moves outside the popup keep working,
-    // on mouse and touch alike.
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up, { once: true });
-    window.addEventListener("pointercancel", up, { once: true });
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", end);
+    el.addEventListener("pointercancel", end);
   };
 
   const snapBack = () => setPos(null);

@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { YoutubeTranscript } from "youtube-transcript";
 
 export async function POST(req: NextRequest) {
   try {
@@ -23,71 +22,20 @@ export async function POST(req: NextRequest) {
     }
 
     if (type === "youtube" && url) {
-      // Extract YouTube transcript
       const videoId = extractVideoId(url);
       if (!videoId) return NextResponse.json({ ok: false, error: "Invalid YouTube URL" });
 
-      // Get metadata
+      // Try every transcript source and keep the longest result.
+      let transcript = "";
       let title = "YouTube video";
       let author = "";
       try {
-        const ores = await fetch(
-          `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`,
-          { signal: AbortSignal.timeout(8000) }
-        );
-        if (ores.ok) {
-          const d = await ores.json();
-          title = d.title ?? title;
-          author = d.author_name ?? "";
-        }
+        const { extractYouTubeTranscript } = await import("@/lib/youtube");
+        const r = await extractYouTubeTranscript(videoId);
+        transcript = r.text;
+        title = r.title;
+        author = r.author;
       } catch {}
-
-      // Get transcript
-      let transcript = "";
-      try {
-        const items = await YoutubeTranscript.fetchTranscript(videoId, { lang: "en" });
-        transcript = items.map((i) => i.text).join(" ");
-      } catch {}
-
-      // Backup: TranscriptAPI.com (server-side key only)
-      if (transcript.length <= 200) {
-        const tapKey = (process.env.TRANSCRIPT_API_KEY ?? "").trim();
-        if (tapKey) {
-          try {
-            const tapRes = await fetch(
-              `https://transcriptapi.com/api/v2/youtube/transcript?video_url=${encodeURIComponent(videoId)}&format=json`,
-              {
-                headers: { Authorization: `Bearer ${tapKey}` },
-                signal: AbortSignal.timeout(20000),
-              }
-            );
-            if (tapRes.ok) {
-              const tap = await tapRes.json();
-              const segs = Array.isArray(tap.transcript) ? tap.transcript : tap.segments ?? [];
-              const joined = segs
-                .map((s: { text?: string }) => String(s?.text ?? "").trim())
-                .filter(Boolean)
-                .join(" ");
-              if (joined.length > 200) {
-                transcript = joined;
-                if (title === "YouTube video") {
-                  const mt = tap?.metadata?.title ?? tap?.title;
-                  if (typeof mt === "string" && mt.trim()) title = mt.trim();
-                }
-              }
-            }
-          } catch {}
-        }
-      }
-
-      // No-key fallback: caption tracks embedded in the watch page
-      if (transcript.length <= 200) {
-        try {
-          const { fetchCaptionTracksTranscript } = await import("@/lib/youtube");
-          const viaTracks = await fetchCaptionTracksTranscript(videoId);
-          if (viaTracks.length > 200) transcript = viaTracks;
-        } catch {}
-      }
 
       if (transcript.length > 200) {
         return NextResponse.json({
@@ -128,8 +76,9 @@ export async function POST(req: NextRequest) {
       // Scrape web page
       const res = await fetch(url, {
         headers: {
-          "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-          accept: "text/html,application/xhtml+xml",
+          "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "accept-language": "en-US,en;q=0.9",
         },
         signal: AbortSignal.timeout(15000),
         redirect: "follow",
@@ -137,39 +86,22 @@ export async function POST(req: NextRequest) {
       if (!res.ok) return NextResponse.json({ ok: false, error: `HTTP ${res.status}` });
       const html = await res.text();
 
-      const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-      const ogTitle = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i);
-      const pageTitle = ogTitle?.[1]?.trim() ?? titleMatch?.[1]?.trim() ?? new URL(url).hostname;
+      // Structure-preserving extraction (headings, bullets, bold) shared with
+      // the server action so scraped pages render like the source.
+      const { htmlToStructuredText, extractTitle, extractDescription } = await import("@/lib/html");
+      const pageTitle = extractTitle(html, new URL(url).hostname);
+      const ogDescription = extractDescription(html);
+      const body = htmlToStructuredText(html);
 
-      // Extract article/main content
-      let contentHtml = html;
-      const articleMatch = html.match(/<article[^>]*>([\s\S]*?)<\/article>/i);
-      const mainMatch = html.match(/<main[^>]*>([\s\S]*?)<\/main>/i);
-      if (articleMatch) contentHtml = articleMatch[1];
-      else if (mainMatch) contentHtml = mainMatch[1];
-
-      const text = contentHtml
-        .replace(/<script[\s\S]*?<\/script>/gi, " ")
-        .replace(/<style[\s\S]*?<\/style>/gi, " ")
-        .replace(/<nav[\s\S]*?<\/nav>/gi, " ")
-        .replace(/<footer[\s\S]*?<\/footer>/gi, " ")
-        .replace(/<header[\s\S]*?<\/header>/gi, " ")
-        .replace(/<[^>]+>/g, "\n")
-        .replace(/&nbsp;/g, " ")
-        .replace(/&amp;/g, "&")
-        .replace(/&lt;/g, "<")
-        .replace(/&gt;/g, ">")
-        .replace(/&#39;/g, "'")
-        .replace(/&quot;/g, '"')
-        .replace(/&#\d+;/g, "")
-        .replace(/[ \t]+/g, " ")
-        .replace(/\n{3,}/g, "\n\n")
-        .trim();
-
-      if (text.length < 100)
+      if (body.length < 100)
         return NextResponse.json({ ok: false, error: "Could not extract readable text." });
 
-      return NextResponse.json({ ok: true, title: pageTitle, text: text.slice(0, 50000), collaborator });
+      const text =
+        ogDescription && !body.slice(0, 600).includes(ogDescription.slice(0, 60))
+          ? `${ogDescription}\n\n${body}`.slice(0, 50000)
+          : body.slice(0, 50000);
+
+      return NextResponse.json({ ok: true, title: pageTitle, text, collaborator });
     }
 
     return NextResponse.json({ ok: false, error: "Provide url and type (youtube|webpage)" });
