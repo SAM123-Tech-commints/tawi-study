@@ -82,7 +82,7 @@ export default function KitDetailPage() {
   }
 
   const { kit, cards, questions } = data;
-  const shareLink = typeof window !== "undefined" ? `${window.location.origin}${data.shareUrl}` : data.shareUrl;
+  const shareLink = typeof window!== "undefined"? `${window.location.origin}${data.shareUrl}`: data.shareUrl;
 
   const saveTitle = async () => {
     await updateKitTitleAction({ kitId: kit.id, title });
@@ -96,10 +96,10 @@ export default function KitDetailPage() {
     const res = await regenerateKitAction(kit.id);
     setRegenerating(false);
     if (res.ok) {
-      toast("Study kit regenerated with fresh content ✨");
+      toast("Study kit regenerated with fresh content ");
       load();
     } else {
-      toast(res.error ?? "Could not regenerate", "error");
+      toast(res.error?? "Could not regenerate", "error");
     }
   };
 
@@ -126,13 +126,13 @@ export default function KitDetailPage() {
       {/* Header */}
       <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
-          {editing ? (
+          {editing? (
             <div className="flex items-center gap-2">
               <Input value={title} onChange={(e) => setTitle(e.target.value)} className="max-w-md text-lg font-bold" autoFocus />
               <Button size="sm" onClick={saveTitle}>Save</Button>
               <Button size="sm" variant="ghost" onClick={() => { setTitle(kit.title); setEditing(false); }}>Cancel</Button>
             </div>
-          ) : (
+          ): (
             <div className="flex items-center gap-2.5">
               <h1 className="font-display truncate text-3xl font-bold tracking-tight text-ink dark:text-cream">{kit.title}</h1>
               <button onClick={() => setEditing(true)} className="rounded-full p-2 text-ink/40 hover:bg-ink/5 hover:text-ink dark:text-cream/40 dark:hover:bg-cream/10 dark:hover:text-cream" aria-label="Rename">
@@ -141,8 +141,8 @@ export default function KitDetailPage() {
             </div>
           )}
           <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-ink/55 dark:text-cream/55">
-            <Badge tone={kit.aiEnabled ? "violet" : "neutral"}>
-              <Sparkles size={11} /> {kit.aiEnabled ? "AI-generated" : "Built-in engine"}
+            <Badge tone={kit.aiEnabled? "violet": "neutral"}>
+              <Sparkles size={11} /> {kit.aiEnabled? "AI-generated": "Built-in engine"}
             </Badge>
             {kit.sourceName && (
               <span className="inline-flex items-center gap-1">
@@ -159,7 +159,7 @@ export default function KitDetailPage() {
             <Copy size={15} /> Create a copy
           </Button>
           <Button variant="outline" onClick={regenerate} disabled={regenerating}>
-            {regenerating ? <Spinner className="h-4 w-4" /> : <RefreshCw size={15} />} Regenerate
+            {regenerating? <Spinner className="h-4 w-4" />: <RefreshCw size={15} />} Regenerate
           </Button>
           <Button variant="ghost" className="text-red-500" onClick={() => setConfirmDelete(true)}>
             <Trash2 size={15} />
@@ -184,7 +184,7 @@ export default function KitDetailPage() {
             </p>
             <p className="mt-1 text-[13px] leading-relaxed text-ink/55 dark:text-cream/55">{t.desc}</p>
             <p className="mt-2 text-xs font-bold text-brand-700 dark:text-brand-400">
-              {t.id === "flashcards" && `${cards.length} cards${data.dueCount ? ` · ${data.dueCount} due` : ""}`}
+              {t.id === "flashcards" && `${cards.length} cards${data.dueCount? ` · ${data.dueCount} due`: ""}`}
               {t.id === "smart-study" && `${questions.length} questions`}
               {t.id === "study-guide" && "Exact text + AI summary"}
               {t.id === "games" && "5 games"}
@@ -208,7 +208,7 @@ export default function KitDetailPage() {
               onClick={() => setTab(t)}
               className={cn(
                 "rounded-full px-4 py-1.5 text-sm font-bold transition",
-                tab === t ? "bg-ink text-cream dark:bg-cream dark:text-ink" : "bg-ink/5 text-ink/60 hover:bg-ink/10 dark:bg-cream/10 dark:text-cream/60"
+                tab === t? "bg-ink text-cream dark:bg-cream dark:text-ink": "bg-ink/5 text-ink/60 hover:bg-ink/10 dark:bg-cream/10 dark:text-cream/60"
               )}
             >
               {label}
@@ -222,7 +222,7 @@ export default function KitDetailPage() {
               <BookOpen size={15} /> Overview
             </p>
             <p className="text-[15px] leading-relaxed text-ink/80 dark:text-cream/80">
-              {kit.summary?.overview ?? "No summary yet — click Regenerate to create one."}
+              {kit.summary?.overview?? "No summary yet — click Regenerate to create one."}
             </p>
             {kit.summary?.keyTerms && kit.summary.keyTerms.length > 0 && (
               <>

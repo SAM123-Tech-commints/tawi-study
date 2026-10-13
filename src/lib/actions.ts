@@ -47,6 +47,7 @@ import {
 } from "@/lib/auth";
 import { initialSrs, schedule } from "@/lib/srs";
 import { SAMPLE_BIO } from "@/lib/sample";
+import { verifyGoogleIdToken } from "@/lib/google";
 import { boldTerms, extractTerms, keyTerms, normalize, stripBoilerplate } from "@/lib/text";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -218,17 +219,17 @@ export async function googleSigninAction(idToken: string): Promise<{ ok: boolean
       return { ok: false, error: "Google sign-in is not configured yet. Add NEXT_PUBLIC_GOOGLE_CLIENT_ID to enable it." };
     }
     if (!idToken || idToken.length < 100) return { ok: false, error: "Invalid Google credential. Try again." };
-    let claims: { aud?: string; email?: string; email_verified?: string | boolean; name?: string; sub?: string };
+    // Verify the signed token locally against Google's JWKS (with tokeninfo as a
+    // fallback) — far more reliable than whichever single endpoint is up.
+    let claims: Awaited<ReturnType<typeof verifyGoogleIdToken>> = null;
     try {
-      const res = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`, {
-        signal: AbortSignal.timeout(10000),
-      });
-      if (!res.ok) return { ok: false, error: "Could not verify with Google. Try again." };
-      claims = await res.json();
+      claims = await verifyGoogleIdToken(idToken, clientId);
     } catch {
-      return { ok: false, error: "Could not reach Google. Check your connection and try again." };
+      claims = null;
     }
-    if (claims.aud !== clientId) return { ok: false, error: "Google credential mismatch. Try again." };
+    if (!claims) {
+      return { ok: false, error: "Could not verify your Google account. Try again in a moment." };
+    }
     const email = String(claims.email ?? "").trim().toLowerCase();
     if (!EMAIL_RE.test(email)) return { ok: false, error: "Google did not return a valid email." };
     if (claims.email_verified !== true && claims.email_verified !== "true") {
@@ -530,8 +531,13 @@ export async function getUserSettings(): Promise<{
 const ALL_QUESTION_TYPES = [
   "mcq",
   "true_false",
+  "modified_true_false",
+  "identification",
   "short",
+  "essay",
   "enumeration",
+  "ordering",
+  "multiple_response",
   "fill_blank",
   "matching",
 ] as const;

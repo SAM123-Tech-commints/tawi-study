@@ -50,7 +50,7 @@ export function Button({
   return (
     <button
       className={cn(
-        "inline-flex items-center justify-center rounded-full font-semibold transition-all duration-150 active:scale-[0.96] disabled:opacity-50 disabled:pointer-events-none select-none",
+        "inline-flex items-center justify-center rounded-full font-semibold transition-all duration-150 active:scale-[0.96] disabled:opacity-50 disabled:pointer-events-none select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-paper dark:focus-visible:ring-offset-paper-dark",
         variants[variant],
         sizes[size],
         className
@@ -262,10 +262,16 @@ export function ProgressBar({
 }) {
   const pct = max > 0 ? Math.min(100, Math.round((value / max) * 100)) : 0;
   return (
-    <div className={cn("h-2 w-full overflow-hidden rounded-full bg-ink/10 dark:bg-cream/15", className)}>
+    <div
+      role="progressbar"
+      aria-valuenow={pct}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      className={cn("h-2 w-full overflow-hidden rounded-full bg-ink/10 dark:bg-cream/15", className)}
+    >
       <div
         className={cn(
-          "h-full rounded-full transition-all duration-300",
+          "h-full rounded-full transition-all duration-500 ease-out",
           tone === "violet" ? "bg-violet-500" : "bg-brand-500"
         )}
         style={{ width: `${pct}%` }}

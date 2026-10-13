@@ -5,12 +5,16 @@ import { ArrowLeft, ArrowRight, BookOpen, CheckCircle2, ClipboardList, XCircle }
 import { submitAttemptAction } from "@/lib/actions";
 import { findRelatedSentences } from "@/lib/text";
 import {
+  encodeList,
   encodeMatchAnswer,
   enumerationItems,
   gradeAnswer,
+  multiResponseCorrect,
   normAnswer,
+  orderingItems,
   parseMatchPairs,
   questionTypeLabel,
+  splitList,
 } from "@/lib/quiz";
 import {
   Badge,
@@ -130,20 +134,98 @@ function QuestionInput({
   setValue: (v: string) => void;
   reveal: boolean;
 }) {
+  const optionButton = (opt: string) => {
+    const selected = value === opt;
+    const correct = reveal && opt === q.answer;
+    const wrongPick = reveal && selected && opt !== q.answer;
+    return (
+      <button
+        key={opt}
+        onClick={() => !reveal && setValue(opt)}
+        className={cn(
+          "flex items-center justify-between rounded-2xl border px-4 py-3 text-left text-sm font-semibold transition",
+          correct
+            ? "border-green-500 bg-green-100 text-green-800 dark:bg-green-500/20 dark:text-green-300"
+            : wrongPick
+              ? "border-red-400 bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300"
+              : selected
+                ? "border-brand-500 bg-brand-100 text-ink dark:bg-brand-500/15 dark:text-brand-300"
+                : "border-ink/12 bg-surface hover:border-ink/30 dark:border-cream/15 dark:bg-surface-dark dark:hover:border-cream/40"
+        )}
+      >
+        {opt}
+        {correct && <CheckCircle2 size={16} />}
+        {wrongPick && <XCircle size={16} />}
+      </button>
+    );
+  };
+
   if (q.type === "mcq" && q.options?.length) {
+    return <div className="grid gap-2.5">{q.options.map(optionButton)}</div>;
+  }
+
+  if (q.type === "true_false" || q.type === "modified_true_false") {
+    return (
+      <div>
+        <div className="grid grid-cols-2 gap-3">
+          {["True", "False"].map((opt) => {
+            const selected = value === opt;
+            const correct = reveal && opt === q.answer;
+            const wrongPick = reveal && selected && opt !== q.answer;
+            return (
+              <button
+                key={opt}
+                onClick={() => !reveal && setValue(opt)}
+                className={cn(
+                  "rounded-2xl border-2 py-4 text-base font-bold transition",
+                  correct
+                    ? "border-green-500 bg-green-100 text-green-800 dark:bg-green-500/20 dark:text-green-300"
+                    : wrongPick
+                      ? "border-red-400 bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300"
+                      : selected
+                        ? "border-brand-500 bg-brand-100 text-ink dark:bg-brand-500/15 dark:text-brand-300"
+                        : "border-ink/12 bg-surface hover:border-brand-400 dark:border-cream/15 dark:bg-surface-dark"
+                )}
+              >
+                {opt === "True" ? "▲ True" : "▼ False"}
+              </button>
+            );
+          })}
+        </div>
+        {reveal && q.answer === "False" && q.options?.[0] && (
+          <p className="mt-3 rounded-xl bg-green-50 p-3 text-sm font-semibold text-green-800 dark:bg-green-500/10 dark:text-green-300">
+            Correct statement: {q.options[0]}
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  if (q.type === "matching") {
+    return <MatchingInput key={q.id} q={q} value={value} setValue={setValue} reveal={reveal} />;
+  }
+
+  if (q.type === "multiple_response") {
+    const correct = multiResponseCorrect(q).map(normAnswer);
+    const chosen = splitList(value);
+    const toggle = (opt: string) => {
+      if (reveal) return;
+      const has = chosen.some((c) => c === opt);
+      setValue(encodeList(has ? chosen.filter((c) => c !== opt) : [...chosen, opt]));
+    };
     return (
       <div className="grid gap-2.5">
-        {q.options.map((opt) => {
-          const selected = value === opt;
-          const correct = reveal && opt === q.answer;
-          const wrongPick = reveal && selected && opt !== q.answer;
+        {q.options?.map((opt) => {
+          const selected = chosen.includes(opt);
+          const isCorrect = reveal && correct.includes(normAnswer(opt));
+          const wrongPick = reveal && selected && !correct.includes(normAnswer(opt));
           return (
             <button
               key={opt}
-              onClick={() => !reveal && setValue(opt)}
+              onClick={() => toggle(opt)}
               className={cn(
-                "flex items-center justify-between rounded-2xl border px-4 py-3 text-left text-sm font-semibold transition",
-                correct
+                "flex items-center gap-3 rounded-2xl border px-4 py-3 text-left text-sm font-semibold transition",
+                isCorrect
                   ? "border-green-500 bg-green-100 text-green-800 dark:bg-green-500/20 dark:text-green-300"
                   : wrongPick
                     ? "border-red-400 bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300"
@@ -152,47 +234,89 @@ function QuestionInput({
                       : "border-ink/12 bg-surface hover:border-ink/30 dark:border-cream/15 dark:bg-surface-dark dark:hover:border-cream/40"
               )}
             >
+              <span
+                className={cn(
+                  "grid h-4.5 w-4.5 shrink-0 place-items-center rounded-md border-2",
+                  selected || isCorrect ? "border-brand-500 bg-brand-500 text-ink" : "border-ink/25 dark:border-cream/30"
+                )}
+              >
+                {(selected || isCorrect) && <CheckCircle2 size={12} />}
+              </span>
               {opt}
-              {correct && <CheckCircle2 size={16} />}
-              {wrongPick && <XCircle size={16} />}
             </button>
           );
         })}
       </div>
     );
   }
-  if (q.type === "true_false") {
+
+  if (q.type === "ordering") {
+    const items = orderingItems(q);
+    const chosen = splitList(value);
+    const remaining = items.filter((it) => !chosen.some((c) => normAnswer(c) === normAnswer(it)));
+    const correctFor = (idx: number) =>
+      reveal && normAnswer(chosen[idx]) === normAnswer(items[idx]);
     return (
-      <div className="grid grid-cols-2 gap-3">
-        {["True", "False"].map((opt) => {
-          const selected = value === opt;
-          const correct = reveal && opt === q.answer;
-          const wrongPick = reveal && selected && opt !== q.answer;
-          return (
-            <button
-              key={opt}
-              onClick={() => !reveal && setValue(opt)}
+      <div>
+        <p className="mb-2 text-xs font-bold uppercase tracking-wide text-ink/45 dark:text-cream/45">
+          {reveal ? "Your order" : "Tap the items in the correct order"}
+        </p>
+        <div className="grid gap-2">
+          {chosen.map((it, i) => (
+            <div
+              key={`${it}-${i}`}
               className={cn(
-                "rounded-2xl border-2 py-4 text-base font-bold transition",
-                correct
-                  ? "border-green-500 bg-green-100 text-green-800 dark:bg-green-500/20 dark:text-green-300"
-                  : wrongPick
-                    ? "border-red-400 bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300"
-                    : selected
-                      ? "border-brand-500 bg-brand-100 text-ink dark:bg-brand-500/15 dark:text-brand-300"
-                      : "border-ink/12 bg-surface hover:border-brand-400 dark:border-cream/15 dark:bg-surface-dark"
+                "flex items-center gap-2.5 rounded-2xl border px-3.5 py-2.5 text-sm font-semibold",
+                reveal
+                  ? correctFor(i)
+                    ? "border-green-500 bg-green-50 text-green-800 dark:bg-green-500/10 dark:text-green-300"
+                    : "border-red-400 bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300"
+                  : "border-brand-500/40 bg-brand-50 dark:bg-brand-500/10"
               )}
             >
-              {opt === "True" ? "✅ True" : "❌ False"}
-            </button>
-          );
-        })}
+              <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-ink text-[11px] font-bold text-cream dark:bg-cream dark:text-ink">
+                {i + 1}
+              </span>
+              <span className="min-w-0 flex-1">{it}</span>
+              {!reveal && (
+                <button
+                  onClick={() => setValue(encodeList(chosen.filter((_, j) => j !== i)))}
+                  className="rounded-full p-1 text-ink/40 hover:bg-ink/10 dark:text-cream/40 dark:hover:bg-cream/10"
+                  aria-label="Remove"
+                >
+                  <XCircle size={15} />
+                </button>
+              )}
+            </div>
+          ))}
+          {chosen.length === 0 && (
+            <p className="rounded-2xl border border-dashed border-ink/15 px-4 py-3 text-sm text-ink/45 dark:border-cream/15 dark:text-cream/45">
+              No items ordered yet.
+            </p>
+          )}
+        </div>
+        {!reveal && remaining.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {remaining.map((it) => (
+              <button
+                key={it}
+                onClick={() => setValue(encodeList([...chosen, it]))}
+                className="rounded-full border border-ink/15 bg-surface px-3 py-1.5 text-[13px] font-semibold text-ink transition hover:border-brand-500 dark:border-cream/20 dark:bg-surface-dark dark:text-cream"
+              >
+                + {it}
+              </button>
+            ))}
+          </div>
+        )}
+        {reveal && (
+          <p className="mt-3 rounded-xl bg-green-50 p-3 text-sm font-semibold text-green-800 dark:bg-green-500/10 dark:text-green-300">
+            Correct order: {items.join(" → ")}
+          </p>
+        )}
       </div>
     );
   }
-  if (q.type === "matching") {
-    return <MatchingInput key={q.id} q={q} value={value} setValue={setValue} reveal={reveal} />;
-  }
+
   if (q.type === "enumeration") {
     const items = enumerationItems(q);
     const got = normAnswer(value);
@@ -235,13 +359,42 @@ function QuestionInput({
       </div>
     );
   }
+
+  if (q.type === "essay") {
+    const isRight = reveal && gradeAnswer(q, value);
+    return (
+      <textarea
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        disabled={reveal}
+        placeholder="Write your answer in a few sentences…"
+        rows={6}
+        className={cn(
+          "w-full rounded-2xl border-2 px-4 py-3 text-sm font-medium leading-relaxed outline-none transition",
+          reveal
+            ? isRight
+              ? "border-green-500 bg-green-50 text-green-900 dark:bg-green-500/10 dark:text-green-300"
+              : "border-amber-400 bg-amber-50 text-amber-900 dark:bg-amber-500/10 dark:text-amber-200"
+            : "border-ink/15 bg-surface text-ink focus:border-brand-500 dark:border-cream/15 dark:bg-surface-dark dark:text-cream"
+        )}
+      />
+    );
+  }
+
+  // identification, fill_blank, short
   const isRight = reveal && gradeAnswer(q, value);
   return (
     <input
       value={value}
       onChange={(e) => setValue(e.target.value)}
       disabled={reveal}
-      placeholder={q.type === "fill_blank" ? "Type the missing word or phrase…" : "Type your answer…"}
+      placeholder={
+        q.type === "fill_blank"
+          ? "Type the missing word or phrase…"
+          : q.type === "identification"
+            ? "Type the exact term…"
+            : "Type your answer…"
+      }
       className={cn(
         "w-full rounded-2xl border-2 px-4 py-3 text-sm font-medium outline-none transition",
         reveal
@@ -252,6 +405,47 @@ function QuestionInput({
       )}
     />
   );
+}
+
+function displayUserAnswer(q: AssignmentQuestionRow, raw: string): string {
+  if (!raw) return "";
+  if (q.type === "multiple_response") return splitList(raw).join(", ");
+  if (q.type === "ordering") return splitList(raw).join(" → ");
+  if (q.type === "matching") {
+    const pairs = parseMatchPairs(raw);
+    return pairs.length ? pairs.map((p) => p.term).join(", ") : raw;
+  }
+  return raw;
+}
+
+/** Renders the correct answer for any question format, emoji-free. */
+function CorrectAnswer({ q }: { q: AssignmentQuestionRow }) {
+  if (q.type === "matching") {
+    const pairs = parseMatchPairs(q.options);
+    return (
+      <ul className="mt-1 space-y-0.5">
+        {pairs.map((p) => (
+          <li key={p.term}>
+            <span className="font-semibold">{p.term}</span> → {p.meaning}
+          </li>
+        ))}
+      </ul>
+    );
+  }
+  if (q.type === "multiple_response") {
+    return <span>{multiResponseCorrect(q).join(", ")}</span>;
+  }
+  if (q.type === "ordering") {
+    return <span>{orderingItems(q).join(" → ")}</span>;
+  }
+  if (q.type === "modified_true_false") {
+    return (
+      <span>
+        {q.answer === "False" && q.options?.[0] ? `False — ${q.options[0]}` : "True"}
+      </span>
+    );
+  }
+  return <span>{q.answer}</span>;
 }
 
 export function TakeQuiz({ data }: { data: TakeData }) {
@@ -367,7 +561,7 @@ export function TakeQuiz({ data }: { data: TakeData }) {
           <ScoreRing pct={pct} size={140} label="score" />
         </div>
         <h1 className="text-xl font-bold text-ink dark:text-cream">
-          {pct >= 80 ? "Outstanding, " + name + "! 🎉" : pct >= 50 ? "Good effort, " + name + "!" : "Keep going, " + name + "!"}
+          {pct >= 80 ? "Outstanding, " + name + "!" : pct >= 50 ? "Good effort, " + name + "!" : "Keep going, " + name + "!"}
         </h1>
         <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-ink/60 dark:text-cream/60">
           You got <strong>{score}</strong> out of <strong>{total}</strong> correct. Don&apos;t worry about the
@@ -399,12 +593,14 @@ export function TakeQuiz({ data }: { data: TakeData }) {
               </div>
               {!correct && userAnswer.trim() && (
                 <p className="mb-2 text-sm text-red-500">
-                  Your answer: <span className="font-semibold">{userAnswer}</span>
+                  Your answer: <span className="font-semibold">{displayUserAnswer(q, userAnswer)}</span>
                 </p>
               )}
               <div className="mb-3 rounded-2xl bg-green-50 p-4 text-sm font-medium leading-relaxed text-green-900 dark:bg-green-500/10 dark:text-green-300">
-                <span className="font-bold">✓ Correct answer: </span>
-                {q.answer}
+                <span className="mb-1 flex items-center gap-1.5 font-bold">
+                  <CheckCircle2 size={14} /> Correct answer
+                </span>
+                <CorrectAnswer q={q} />
               </div>
               {q.explanation && (
                 <div className="mb-3">

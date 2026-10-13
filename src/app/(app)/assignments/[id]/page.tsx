@@ -9,6 +9,7 @@ import {
   Copy,
   Eye,
   GraduationCap,
+  Lightbulb,
   Plus,
   Settings2,
   Share2,
@@ -21,7 +22,7 @@ import {
   generateAssignmentQuestionsAction,
   getAssignmentData,
 } from "@/lib/actions";
-import { questionTypeLabel } from "@/lib/quiz";
+import { questionTypeLabel, QUESTION_TYPE_IDS, QUESTION_TYPE_LABELS } from "@/lib/quiz";
 import {
   Badge,
   Button,
@@ -71,7 +72,7 @@ export default function AssignmentDetailPage() {
   }
 
   const { assignment: a, questions, attempts } = data;
-  const takeUrl = typeof window !== "undefined" ? `${window.location.origin}/take/${a.shareToken}` : "";
+  const takeUrl = typeof window!== "undefined"? `${window.location.origin}/take/${a.shareToken}`: "";
 
   const removeQ = async (qid: string) => {
     setBusy(qid);
@@ -92,16 +93,16 @@ export default function AssignmentDetailPage() {
     });
     setGenerating(false);
     if (res.ok) {
-      toast(append ? `${res.created} more questions added` : `${res.created} questions regenerated`);
+      toast(append? `${res.created} more questions added`: `${res.created} questions regenerated`);
       setMoreOpen(false);
       load();
     } else {
-      toast(res.error ?? "Could not generate", "error");
+      toast(res.error?? "Could not generate", "error");
     }
   };
 
   const avg = attempts.length
-    ? Math.round(attempts.reduce((acc, t) => acc + (t.total ? t.score / t.total : 0), 0) / attempts.length * 100)
+    ? Math.round(attempts.reduce((acc, t) => acc + (t.total? t.score / t.total: 0), 0) / attempts.length * 100)
     : null;
 
   return (
@@ -145,12 +146,12 @@ export default function AssignmentDetailPage() {
             onClick={() => setTab(t)}
             className={cn(
               "flex items-center gap-2 rounded-full px-4 py-2 text-sm font-bold transition",
-              tab === t ? "bg-ink text-cream dark:bg-cream dark:text-ink" : "bg-ink/5 text-ink/60 hover:bg-ink/10 dark:bg-cream/10 dark:text-cream/60"
+              tab === t? "bg-ink text-cream dark:bg-cream dark:text-ink": "bg-ink/5 text-ink/60 hover:bg-ink/10 dark:bg-cream/10 dark:text-cream/60"
             )}
           >
             <Icon size={15} /> {label}
-            {n !== null && n > 0 && (
-              <span className={cn("rounded-full px-1.5 text-[11px]", tab === t ? "bg-cream/20 dark:bg-ink/10" : "bg-ink/10 dark:bg-cream/15")}>
+            {n!== null && n > 0 && (
+              <span className={cn("rounded-full px-1.5 text-[11px]", tab === t? "bg-cream/20 dark:bg-ink/10": "bg-ink/10 dark:bg-cream/15")}>
                 {n}
               </span>
             )}
@@ -160,11 +161,11 @@ export default function AssignmentDetailPage() {
 
       {tab === "questions" && (
         <div className="space-y-3">
-          {questions.length === 0 ? (
+          {questions.length === 0? (
             <Card className="text-center">
               <p className="text-sm text-ink/55 dark:text-cream/55">No questions yet — generate some!</p>
             </Card>
-          ) : (
+          ): (
             questions.map((q, i) => (
               <Card key={q.id} className="p-5">
                 <div className="flex items-start gap-3">
@@ -180,8 +181,9 @@ export default function AssignmentDetailPage() {
                       </span>
                     </div>
                     {q.explanation && (
-                      <p className="mt-2 rounded-xl bg-ink/4 p-3 text-[12.5px] leading-relaxed text-ink/60 dark:bg-cream/5 dark:text-cream/60">
-                        💡 {q.explanation}
+                      <p className="mt-2 flex gap-1.5 rounded-xl bg-ink/4 p-3 text-[12.5px] leading-relaxed text-ink/60 dark:bg-cream/5 dark:text-cream/60">
+                        <Lightbulb size={13} className="mt-0.5 shrink-0" />
+                        <span>{q.explanation}</span>
                       </p>
                     )}
                   </div>
@@ -261,23 +263,23 @@ export default function AssignmentDetailPage() {
               <p className="text-xs font-medium text-ink/55 dark:text-cream/55">submissions</p>
             </Card>
             <Card className="px-6 py-4">
-              <p className="font-display text-2xl font-bold text-ink dark:text-cream">{avg !== null ? `${avg}%` : "—"}</p>
+              <p className="font-display text-2xl font-bold text-ink dark:text-cream">{avg!== null? `${avg}%`: "—"}</p>
               <p className="text-xs font-medium text-ink/55 dark:text-cream/55">average score</p>
             </Card>
           </div>
-          {attempts.length === 0 ? (
+          {attempts.length === 0? (
             <Card className="text-center">
               <p className="text-sm text-ink/55 dark:text-cream/55">
                 No submissions yet. Share the link with your students to see results here.
               </p>
             </Card>
-          ) : (
+          ): (
             attempts.map((t) => {
-              const pct = t.total ? Math.round((t.score / t.total) * 100) : 0;
+              const pct = t.total? Math.round((t.score / t.total) * 100): 0;
               return (
                 <Card key={t.id} className="flex items-center gap-4 p-4">
                   <span className="grid h-10 w-10 place-items-center rounded-full bg-ink text-sm font-bold text-cream dark:bg-cream dark:text-ink">
-                    {t.name[0]?.toUpperCase() ?? "?"}
+                    {t.name[0]?.toUpperCase()?? "?"}
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-bold text-ink dark:text-cream">{t.name}</p>
@@ -285,7 +287,7 @@ export default function AssignmentDetailPage() {
                       {t.score}/{t.total} correct · {formatDate(t.createdAt)}
                     </p>
                   </div>
-                  <Badge tone={pct >= 80 ? "green" : pct >= 50 ? "amber" : "red"}>{pct}%</Badge>
+                  <Badge tone={pct >= 80? "green": pct >= 50? "amber": "red"}>{pct}%</Badge>
                 </Card>
               );
             })
@@ -306,20 +308,13 @@ export default function AssignmentDetailPage() {
             <p className="mb-2 text-[13px] font-semibold text-ink/80 dark:text-cream/80">Question types</p>
             <div className="flex flex-wrap gap-2">
               {(
-                [
-                  ["mcq", "Multiple choice"],
-                  ["true_false", "True / False"],
-                  ["short", "Short answer"],
-                  ["enumeration", "Enumeration"],
-                  ["fill_blank", "Fill in the blank"],
-                  ["matching", "Matching"],
-                ] as const
+                QUESTION_TYPE_IDS.map((v) => [v, QUESTION_TYPE_LABELS[v]] as const)
               ).map(([v, l]) => {
                 const on = types.includes(v);
                 return (
                   <button
                     key={v}
-                    onClick={() => setTypes((t) => (on ? t.filter((x) => x !== v) : [...t, v]))}
+                    onClick={() => setTypes((t) => (on? t.filter((x) => x!== v): [...t, v]))}
                     className={cn(
                       "rounded-full border px-3.5 py-1.5 text-[13px] font-bold transition",
                       on
@@ -339,11 +334,11 @@ export default function AssignmentDetailPage() {
         </div>
         <div className="mt-6 flex flex-wrap justify-end gap-2">
           <Button variant="ghost" onClick={() => setMoreOpen(false)}>Cancel</Button>
-          <Button variant="outline" onClick={() => generateMore(true)} disabled={generating || !types.length}>
-            {generating ? <Spinner className="h-4 w-4" /> : <Plus size={15} />} Append
+          <Button variant="outline" onClick={() => generateMore(true)} disabled={generating ||!types.length}>
+            {generating? <Spinner className="h-4 w-4" />: <Plus size={15} />} Append
           </Button>
-          <Button onClick={() => generateMore(false)} disabled={generating || !types.length}>
-            {generating ? <Spinner className="h-4 w-4 border-ink/30 border-t-ink" /> : <Sparkles size={15} />} Regenerate
+          <Button onClick={() => generateMore(false)} disabled={generating ||!types.length}>
+            {generating? <Spinner className="h-4 w-4 border-ink/30 border-t-ink" />: <Sparkles size={15} />} Regenerate
           </Button>
         </div>
       </Modal>

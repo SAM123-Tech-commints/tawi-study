@@ -78,7 +78,7 @@ export function AppShell({ user, children }: { user: ShellUser; children: React.
 
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+      if (menuRef.current &&!menuRef.current.contains(e.target as Node)) setMenuOpen(false);
     };
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
@@ -134,17 +134,17 @@ export function AppShell({ user, children }: { user: ShellUser; children: React.
             <ThemeToggle />
             <div className="relative" ref={menuRef}>
               <button
-                onClick={() => setMenuOpen((o) => !o)}
+                onClick={() => setMenuOpen((o) =>!o)}
                 className="rounded-full transition hover:ring-2 hover:ring-brand-400/60"
                 aria-label="Account menu"
               >
-                {user.avatar ? (
+                {user.avatar? (
                   <img
                     src={user.avatar}
                     alt={user.name}
                     className="h-[34px] w-[34px] rounded-full object-cover"
                   />
-                ) : (
+                ): (
                   <Avatar name={user.name} size={34} />
                 )}
               </button>
@@ -155,11 +155,11 @@ export function AppShell({ user, children }: { user: ShellUser; children: React.
                     <p className="truncate text-xs text-ink/50 dark:text-cream/50">{user.email}</p>
                     <div className="mt-1.5 flex flex-wrap gap-1">
                       <span className="inline-flex items-center gap-1 rounded-full bg-brand-100 px-2 py-0.5 text-[11px] font-semibold text-ink dark:bg-brand-500/15 dark:text-brand-300">
-                        {user.role === "educator" ? (
+                        {user.role === "educator"? (
                           <><GraduationCap size={11} /> Educator</>
-                        ) : user.role === "student" ? (
+                        ): user.role === "student"? (
                           <><Pencil size={11} /> Student</>
-                        ) : (
+                        ): (
                           "Guest"
                         )}
                       </span>
@@ -202,10 +202,10 @@ export function AppShell({ user, children }: { user: ShellUser; children: React.
             </div>
             <button
               className="inline-flex h-9 w-9 items-center justify-center rounded-full text-ink/60 hover:bg-ink/5 md:hidden dark:text-cream/70 dark:hover:bg-cream/10"
-              onClick={() => setMobileOpen((o) => !o)}
+              onClick={() => setMobileOpen((o) =>!o)}
               aria-label="Menu"
             >
-              {mobileOpen ? <X size={18} /> : <Menu size={18} />}
+              {mobileOpen? <X size={18} />: <Menu size={18} />}
             </button>
           </div>
         </div>
@@ -242,7 +242,7 @@ export function AppShell({ user, children }: { user: ShellUser; children: React.
         {user.isGuest && (
           <div className="mb-6 flex flex-col items-start justify-between gap-3 rounded-2xl border border-amber-400/50 bg-amber-50 p-4 sm:flex-row sm:items-center dark:bg-amber-500/10">
             <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">
-              👀 You&apos;re browsing as a guest — uploads, study kits, assignments, calendar and
+               You&apos;re browsing as a guest — uploads, study kits, assignments, calendar and
               workspace need a free account.
             </p>
             <Link
@@ -263,7 +263,7 @@ export function AppShell({ user, children }: { user: ShellUser; children: React.
           onClose={() => setTimerOpen(false)}
         />
       )}
-      {timerOn && !timerOpen && (
+      {timerOn &&!timerOpen && (
         <button
           onClick={() => setTimerOpen(true)}
           className="fixed bottom-5 right-5 z-40 rounded-full bg-ink px-4 py-2.5 text-sm font-bold text-brand-300 shadow-xl transition hover:scale-105 active:scale-95 no-print dark:bg-brand-500 dark:text-ink"

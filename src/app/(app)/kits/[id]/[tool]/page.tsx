@@ -12,20 +12,25 @@ import {
   ChevronRight,
   Copy,
   Download,
+  Eraser,
   Eye,
   EyeOff,
+  Frown,
   Gamepad2,
   Layers,
   Lightbulb,
   List,
+  Meh,
   NotebookPen,
   Plus,
   Printer,
   RefreshCw,
   RotateCcw,
   Shuffle,
+  Smile,
   Sparkles,
   Trash2,
+  Trophy,
   X,
 } from "lucide-react";
 import {
@@ -63,12 +68,16 @@ import {
 import { GameHub, type GameCard } from "@/components/games";
 import { extractTerms, keyTerms, splitSentences } from "@/lib/text";
 import {
+  encodeList,
   encodeMatchAnswer,
   enumerationItems,
   gradeAnswer,
+  multiResponseCorrect,
   normAnswer,
+  orderingItems,
   parseMatchPairs,
   questionTypeLabel,
+  splitList,
 } from "@/lib/quiz";
 import type { CardRow, KitQuestionRow } from "@/db/schema";
 
@@ -134,7 +143,13 @@ export default function KitToolPage() {
       {tool === "flashcards" && <FlashcardsTool data={data} onChanged={load} />}
       {tool === "smart-study" && <SmartStudyTool data={data} />}
       {tool === "study-guide" && <StudyGuideTool data={data} onChanged={load} shareLink={shareLink} />}
-      {tool === "games" && <GameHub cards={data.cards as GameCard[]} onExit={() => router.push(`/kits/${id}`)} />}
+      {tool === "games" && (
+        <GameHub
+          cards={data.cards as GameCard[]}
+          questions={data.questions}
+          onExit={() => router.push(`/kits/${id}`)}
+        />
+      )}
     </div>
   );
 }
@@ -155,7 +170,7 @@ function DefSourceToggle({
       {(
         [
           ["exact", "Exact text"],
-          ["ai", `✨ AI summary${aiCount ? ` (${aiCount})` : ""}`],
+          ["ai", `AI summary${aiCount ? ` (${aiCount})` : ""}`],
         ] as const
       ).map(([id, label]) => (
         <button
@@ -292,7 +307,7 @@ function FlashcardsTool({ data, onChanged }: { data: KitData; onChanged: () => v
                     <p className="text-[15px] font-bold text-ink dark:text-cream">{c.term}</p>
                     <p className="mt-1 text-[13.5px] leading-relaxed text-ink/60 dark:text-cream/60">{d.text}</p>
                     <span className={`mt-1.5 inline-block rounded-full px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide ${d.ai ? "bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-300" : "bg-ink/5 text-ink/50 dark:bg-cream/10 dark:text-cream/50"}`}>
-                      {d.ai ? "✨ AI definition" : "Exact text"}
+                      {d.ai ? "AI definition" : "Exact text"}
                     </span>
                   </div>
                   <button
@@ -330,9 +345,15 @@ function FlashcardsTool({ data, onChanged }: { data: KitData; onChanged: () => v
         <div className="flex items-center gap-3">
           <DefSourceToggle value={defSource} onChange={setDefSource} aiCount={aiCount} />
           <div className="flex items-center gap-3 text-xs font-bold">
-            <span className="text-green-600 dark:text-green-400">😎 {session.got}</span>
-            <span className="text-amber-500">🤔 {session.unsure}</span>
-            <span className="text-red-500">😬 {session.again}</span>
+            <span className="inline-flex items-center gap-1 text-green-600 dark:text-green-400">
+              <Smile size={14} /> {session.got}
+            </span>
+            <span className="inline-flex items-center gap-1 text-amber-500">
+              <Meh size={14} /> {session.unsure}
+            </span>
+            <span className="inline-flex items-center gap-1 text-red-500">
+              <Frown size={14} /> {session.again}
+            </span>
           </div>
         </div>
       </div>
@@ -361,7 +382,7 @@ function FlashcardsTool({ data, onChanged }: { data: KitData; onChanged: () => v
               </div>
               <div className="flip-face flip-back flex flex-col items-center justify-center rounded-3xl border border-brand-500/50 bg-brand-50 p-8 dark:bg-brand-500/10">
                 <p className="text-xs font-bold uppercase tracking-widest text-brand-700 dark:text-brand-400">
-                  Definition · {defFor(current).ai ? "✨ AI summary" : "Exact text"}
+                  Definition · {defFor(current).ai ? "AI summary" : "Exact text"}
                 </p>
                 <p className="mt-3 max-h-56 overflow-auto text-center text-[17px] font-medium leading-relaxed text-ink/85 dark:text-cream/85">
                   {defFor(current).text}
@@ -372,17 +393,17 @@ function FlashcardsTool({ data, onChanged }: { data: KitData; onChanged: () => v
           <div className="mt-6 grid grid-cols-3 gap-2.5">
             {(
               [
-                ["again", "😬", "Again", "bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-500/15 dark:text-red-300"],
-                ["unsure", "🤔", "Unsure", "bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-500/15 dark:text-amber-300"],
-                ["got", "😎", "Got it", "bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-500/15 dark:text-green-300"],
+                ["again", Frown, "Again", "bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-500/15 dark:text-red-300"],
+                ["unsure", Meh, "Unsure", "bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-500/15 dark:text-amber-300"],
+                ["got", Smile, "Got it", "bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-500/15 dark:text-green-300"],
               ] as const
-            ).map(([r, emoji, label, cls]) => (
+            ).map(([r, Icon, label, cls]) => (
               <button
                 key={r}
                 onClick={() => rate(r)}
-                className={cn("rounded-2xl py-3.5 text-sm font-bold transition", cls)}
+                className={cn("inline-flex items-center justify-center gap-1.5 rounded-2xl py-3.5 text-sm font-bold transition", cls)}
               >
-                {emoji} {label}
+                <Icon size={16} /> {label}
               </button>
             ))}
           </div>
@@ -392,7 +413,9 @@ function FlashcardsTool({ data, onChanged }: { data: KitData; onChanged: () => v
         </>
       ) : (
         <Card className="flex flex-col items-center py-14 text-center">
-          <span className="text-5xl">🎉</span>
+          <span className="grid h-16 w-16 place-items-center rounded-full bg-brand-500 text-ink">
+            <Trophy size={30} />
+          </span>
           <h3 className="font-display mt-4 text-xl font-bold text-ink dark:text-cream">All caught up!</h3>
           <p className="mt-1 max-w-sm text-sm text-ink/60 dark:text-cream/60">
             You reviewed {session.got + session.unsure + session.again} cards. “Again” cards will reappear
@@ -426,9 +449,9 @@ function FlashcardsTool({ data, onChanged }: { data: KitData; onChanged: () => v
           <p>1. Read the <strong>term</strong>, then tap the card to flip it.</p>
           <p>2. Rate yourself honestly:</p>
           <ul className="ml-4 list-disc space-y-1">
-            <li><strong>😎 Got it</strong> — you knew it instantly</li>
-            <li><strong>🤔 Unsure</strong> — you sort of knew it</li>
-            <li><strong>😬 Again</strong> — no idea, show me soon</li>
+            <li><strong>Got it</strong> — you knew it instantly</li>
+            <li><strong>Unsure</strong> — you sort of knew it</li>
+            <li><strong>Again</strong> — no idea, show me soon</li>
           </ul>
           <p>3. Spaced repetition brings hard cards back sooner and pushes easy cards further out — that&apos;s how you remember for exams.</p>
         </div>
@@ -448,7 +471,7 @@ function AddCardForm({ kitId, onAdded }: { kitId: string; onAdded: () => void })
     if (!term.trim() || !definition.trim()) return;
     const res = await addCardAction({ kitId, term, definition });
     if (res.ok) {
-      toast("Flashcard added ✨");
+      toast("Flashcard added ");
       setTerm("");
       setDefinition("");
       setOpen(false);
@@ -648,7 +671,7 @@ function SmartStudyTool({ data }: { data: KitData }) {
         <Card className="flex flex-col items-center py-12 text-center">
           <ScoreRing pct={pct} size={150} label="mastery" />
           <h3 className="font-display mt-5 text-xl font-bold text-ink dark:text-cream">
-            {pct >= 80 ? "Amazing recall! 🧠" : pct >= 50 ? "Solid session!" : "Great practice — keep going!"}
+            {pct >= 80 ? "Amazing recall!" : pct >= 50 ? "Solid session!" : "Great practice — keep going!"}
           </h3>
           <p className="mt-2 text-sm text-ink/60 dark:text-cream/60">
             You answered {correct} of {questions.length} correctly. Missed questions are listed below —
@@ -660,7 +683,9 @@ function SmartStudyTool({ data }: { data: KitData }) {
               {missed.map((m, i) => (
                 <div key={i} className="rounded-2xl bg-ink/4 p-3.5 text-[13px] font-medium text-ink/75 dark:bg-cream/5 dark:text-cream/75">
                   <span className="font-bold">{m.question}</span>
-                  <span className="mt-1 block text-brand-700 dark:text-brand-400">✓ {m.answer}</span>
+                  <span className="mt-1 flex items-center gap-1 text-brand-700 dark:text-brand-400">
+                    <Check size={12} /> {m.answer}
+                  </span>
                 </div>
               ))}
             </div>
@@ -729,46 +754,59 @@ function SmartStudyTool({ data }: { data: KitData }) {
           </div>
         )}
 
-        {q.type === "true_false" && (
-          <div className="grid grid-cols-2 gap-3">
-            {["True", "False"].map((opt) => {
-              const selected = input === opt;
-              const isCorrect = canShow && opt === q.answer;
-              return (
-                <button
-                  key={opt}
-                  onClick={() => {
-                    if (graded) return;
-                    setInput(opt);
-                  }}
-                  className={cn(
-                    "rounded-2xl border-2 py-4 text-base font-bold transition",
-                    isCorrect
-                      ? "border-green-500 bg-green-100 text-green-800 dark:bg-green-500/20 dark:text-green-300"
-                      : selected
-                        ? "border-brand-500 bg-brand-100 text-ink dark:bg-brand-500/15 dark:text-brand-300"
-                        : "border-ink/12 bg-surface hover:border-brand-400 dark:border-cream/15 dark:bg-surface-dark"
-                  )}
-                >
-                  {opt === "True" ? "✅ True" : "❌ False"}
-                </button>
-              );
-            })}
+        {(q.type === "true_false" || q.type === "modified_true_false") && (
+          <div>
+            <div className="grid grid-cols-2 gap-3">
+              {["True", "False"].map((opt) => {
+                const selected = input === opt;
+                const isCorrect = canShow && opt === q.answer;
+                return (
+                  <button
+                    key={opt}
+                    onClick={() => {
+                      if (graded) return;
+                      setInput(opt);
+                    }}
+                    className={cn(
+                      "rounded-2xl border-2 py-4 text-base font-bold transition",
+                      isCorrect
+                        ? "border-green-500 bg-green-100 text-green-800 dark:bg-green-500/20 dark:text-green-300"
+                        : selected
+                          ? "border-brand-500 bg-brand-100 text-ink dark:bg-brand-500/15 dark:text-brand-300"
+                          : "border-ink/12 bg-surface hover:border-brand-400 dark:border-cream/15 dark:bg-surface-dark"
+                    )}
+                  >
+                    {opt === "True" ? "▲ True" : "▼ False"}
+                  </button>
+                );
+              })}
+            </div>
+            {canShow && q.type === "modified_true_false" && q.answer === "False" && q.options?.[0] && (
+              <p className="mt-3 rounded-xl bg-ink/4 p-3 text-sm font-semibold text-ink/80 dark:bg-cream/5 dark:text-cream/80">
+                Correct statement: {q.options[0]}
+              </p>
+            )}
           </div>
         )}
 
-        {q.type === "short" && (
+        {(q.type === "short" || q.type === "identification" || q.type === "essay") && (
           <Textarea
-            rows={3}
+            rows={q.type === "essay" ? 6 : 3}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             disabled={graded}
-            placeholder="Answer in your own words, then check…"
+            placeholder={
+              q.type === "identification"
+                ? "Type the exact term, then check…"
+                : q.type === "essay"
+                  ? "Write your answer in a few sentences…"
+                  : "Answer in your own words, then check…"
+            }
             className={cn(
               graded &&
-                (input.trim().toLowerCase() === q.answer.trim().toLowerCase()
+                (gradeAnswer(q, input)
                   ? "border-green-500 bg-green-100 text-green-800 dark:bg-green-500/20 dark:text-green-300"
-                  : "border-red-400 bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300")
+                  : "border-amber-400 bg-amber-50 text-amber-900 dark:bg-amber-500/10 dark:text-amber-200")
             )}
           />
         )}
@@ -821,21 +859,129 @@ function SmartStudyTool({ data }: { data: KitData }) {
           </div>
         )}
 
-        {q.type === "matching" && (
-          <SmartMatchInput key={q.id} q={q} value={input} onChange={setInput} reveal={canShow} />
+        {q.type === "multiple_response" && (
+          <div className="grid gap-2.5">
+            {q.options?.map((opt) => {
+              const chosen = splitList(input);
+              const selected = chosen.includes(opt);
+              const correct = multiResponseCorrect(q).map(normAnswer);
+              const isCorrect = canShow && correct.includes(normAnswer(opt));
+              const wrongPick = canShow && selected && !correct.includes(normAnswer(opt));
+              return (
+                <button
+                  key={opt}
+                  onClick={() => {
+                    if (graded) return;
+                    setInput(encodeList(selected ? chosen.filter((c) => c !== opt) : [...chosen, opt]));
+                  }}
+                  className={cn(
+                    "flex items-center gap-3 rounded-2xl border px-4 py-3 text-left text-sm font-semibold transition",
+                    isCorrect
+                      ? "border-green-500 bg-green-100 text-green-800 dark:bg-green-500/20 dark:text-green-300"
+                      : wrongPick
+                        ? "border-red-400 bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300"
+                        : selected
+                          ? "border-brand-500 bg-brand-100 text-ink dark:bg-brand-500/15 dark:text-brand-300"
+                          : "border-ink/12 bg-surface hover:border-ink/30 dark:border-cream/15 dark:bg-surface-dark dark:hover:border-cream/40"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "grid h-4.5 w-4.5 shrink-0 place-items-center rounded-md border-2",
+                      selected || isCorrect ? "border-brand-500 bg-brand-500 text-ink" : "border-ink/25 dark:border-cream/30"
+                    )}
+                  >
+                    {(selected || isCorrect) && <Check size={12} />}
+                  </span>
+                  {opt}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {q.type === "ordering" && (() => {
+          const items = orderingItems(q);
+          const chosen = splitList(input);
+          const remaining = items.filter((it) => !chosen.some((c) => normAnswer(c) === normAnswer(it)));
+          return (
+            <div>
+              <p className="mb-2 text-xs font-bold uppercase tracking-wide text-ink/45 dark:text-cream/45">
+                {canShow ? "Your order" : "Tap the items in the correct order"}
+              </p>
+              <div className="grid gap-2">
+                {chosen.map((it, i) => (
+                  <div
+                    key={`${it}-${i}`}
+                    className={cn(
+                      "flex items-center gap-2.5 rounded-2xl border px-3.5 py-2.5 text-sm font-semibold",
+                      canShow
+                        ? normAnswer(chosen[i]) === normAnswer(items[i])
+                          ? "border-green-500 bg-green-50 text-green-800 dark:bg-green-500/10 dark:text-green-300"
+                          : "border-red-400 bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300"
+                        : "border-brand-500/40 bg-brand-50 dark:bg-brand-500/10"
+                    )}
+                  >
+                    <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-ink text-[11px] font-bold text-cream dark:bg-cream dark:text-ink">
+                      {i + 1}
+                    </span>
+                    <span className="min-w-0 flex-1">{it}</span>
+                    {!graded && (
+                      <button
+                        onClick={() => setInput(encodeList(chosen.filter((_, j) => j !== i)))}
+                        className="rounded-full p-1 text-ink/40 hover:bg-ink/10 dark:text-cream/40 dark:hover:bg-cream/10"
+                        aria-label="Remove"
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+                {chosen.length === 0 && (
+                  <p className="rounded-2xl border border-dashed border-ink/15 px-4 py-3 text-sm text-ink/45 dark:border-cream/15 dark:text-cream/45">
+                    No items ordered yet.
+                  </p>
+                )}
+              </div>
+              {!canShow && remaining.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {remaining.map((it) => (
+                    <button
+                      key={it}
+                      onClick={() => setInput(encodeList([...chosen, it]))}
+                      className="rounded-full border border-ink/15 bg-surface px-3 py-1.5 text-[13px] font-semibold text-ink transition hover:border-brand-500 dark:border-cream/20 dark:bg-surface-dark dark:text-cream"
+                    >
+                      + {it}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        {q.type === "matching" && (          <SmartMatchInput key={q.id} q={q} value={input} onChange={setInput} reveal={canShow} />
         )}
 
         {canShow && (
           <div className="mt-5 rounded-2xl bg-green-50 p-4 text-sm leading-relaxed text-green-900 dark:bg-green-500/10 dark:text-green-300 animate-pop">
-            <span className="font-bold">✓ Correct answer: </span>
+            <span className="mb-1 flex items-center gap-1.5 font-bold">
+              <Check size={14} /> Correct answer
+            </span>
             {q.type === "matching" ? (
-              <ul className="mt-1.5 space-y-0.5">
+              <ul className="mt-1 space-y-0.5">
                 {parseMatchPairs(q.options).map((p) => (
                   <li key={p.term}>
                     <span className="font-semibold">{p.term}</span> → {p.meaning}
                   </li>
                 ))}
               </ul>
+            ) : q.type === "multiple_response" ? (
+              multiResponseCorrect(q).join(", ")
+            ) : q.type === "ordering" ? (
+              orderingItems(q).join(" → ")
+            ) : q.type === "modified_true_false" ? (
+              q.answer === "False" && q.options?.[0] ? `False — ${q.options[0]}` : "True"
             ) : (
               q.answer
             )}
@@ -963,7 +1109,7 @@ function StudyGuideTool({
       const res = await suggestGuideTermsAction(kit.id);
       if (res.ok && res.terms?.length) {
         setHighlights(res.terms);
-        toast(`Highlights refreshed — ${res.terms.length} key terms ${res.ai ? "✨ (AI)" : "✨"}`);
+        toast(`Highlights refreshed — ${res.terms.length} key terms ${res.ai ? " (AI)" : ""}`);
         return;
       }
       const fresh = keyTerms(kit.content, 12).map((k) => k.term).filter(Boolean);
@@ -972,7 +1118,7 @@ function StudyGuideTool({
         return;
       }
       setHighlights(fresh);
-      toast(`Highlights refreshed — ${fresh.length} key terms ✨`);
+      toast(`Highlights refreshed — ${fresh.length} key terms `);
     } finally {
       setHlBusy(false);
     }
@@ -988,7 +1134,7 @@ function StudyGuideTool({
     });
     const removed = highlights.length - cleaned.length;
     setHighlights(cleaned);
-    toast(removed > 0 ? `Removed ${removed} vague term${removed === 1 ? "" : "s"} 🧹` : "Highlights already look clean ✨");
+    toast(removed > 0 ? `Removed ${removed} vague term${removed === 1 ? "" : "s"} ` : "Highlights already look clean ");
   };
 
   const addTerm = () => {
@@ -1027,10 +1173,10 @@ function StudyGuideTool({
     setBusy(true);
     if (mode === "notes") {
       const res = await regenerateNotesAction(kit.id);
-      toast(res.ok ? "Notes regenerated ✨" : "Could not regenerate", res.ok ? "success" : "error");
+      toast(res.ok ? "Notes regenerated " : "Could not regenerate", res.ok ? "success" : "error");
     } else {
       const res = await regenerateKitAction(kit.id);
-      toast(res.ok ? "Study tools regenerated ✨" : "Could not regenerate", res.ok ? "success" : "error");
+      toast(res.ok ? "Study tools regenerated " : "Could not regenerate", res.ok ? "success" : "error");
     }
     setBusy(false);
     onChanged();
@@ -1041,7 +1187,7 @@ function StudyGuideTool({
     try {
       const res = await cleanupExactTextAction(kit.id);
       if (res.ok) {
-        toast(res.ai ? "Formatting fixed — every word kept ✨ (AI)" : "Spacing cleaned up ✨");
+        toast(res.ai ? "Formatting fixed — every word kept  (AI)" : "Spacing cleaned up ");
         onChanged();
       } else {
         toast(res.error ?? "Could not clean formatting", "error");
@@ -1084,7 +1230,7 @@ function StudyGuideTool({
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
-    toast("Downloaded — open it anywhere, or Print / PDF it 📄");
+    toast("Downloaded — open it anywhere, or Print / PDF it ");
   };
 
   return (
@@ -1094,7 +1240,7 @@ function StudyGuideTool({
           tabs={[
             { id: "exact", label: "Exact text" },
             { id: "notes", label: "Study notes" },
-            { id: "ai", label: "✨ AI summary" },
+            { id: "ai", label: "AI summary" },
           ]}
           value={mode}
           onChange={(v) => setMode(v as "exact" | "notes" | "ai")}
@@ -1145,7 +1291,7 @@ function StudyGuideTool({
                   {hlBusy ? <Spinner className="h-3.5 w-3.5" /> : <RefreshCw size={13} />} Refresh highlights
                 </Button>
                 <Button variant="outline" size="sm" onClick={cleanHighlights} disabled={!highlights.length}>
-                  🧹 Clean up
+                  <Eraser size={13} /> Clean up
                 </Button>
                 <Button
                   variant={focusOnly ? "dark" : "outline"}

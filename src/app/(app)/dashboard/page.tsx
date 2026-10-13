@@ -74,7 +74,7 @@ function DemoModal({ open, onClose }: { open: boolean; onClose: () => void }) {
       </div>
       <div className="mt-4 flex gap-1.5">
         {DEMO_STEPS.map((_, i) => (
-          <span key={i} className={cn("h-1.5 flex-1 rounded-full", i <= step ? "bg-brand-500" : "bg-ink/10 dark:bg-cream/15")} />
+          <span key={i} className={cn("h-1.5 flex-1 rounded-full", i <= step? "bg-brand-500": "bg-ink/10 dark:bg-cream/15")} />
         ))}
       </div>
       <div className="mt-6 flex items-center justify-between">
@@ -82,9 +82,9 @@ function DemoModal({ open, onClose }: { open: boolean; onClose: () => void }) {
           Back
         </Button>
         <Button
-          onClick={() => (step === DEMO_STEPS.length - 1 ? onClose() : setStep((s) => s + 1))}
+          onClick={() => (step === DEMO_STEPS.length - 1? onClose(): setStep((s) => s + 1))}
         >
-          {step === DEMO_STEPS.length - 1 ? "Let's go!" : "Next"} <ArrowRight size={15} />
+          {step === DEMO_STEPS.length - 1? "Let's go!": "Next"} <ArrowRight size={15} />
         </Button>
       </div>
     </Modal>
@@ -116,11 +116,11 @@ function DashboardInner() {
   }, [load]);
 
   useEffect(() => {
-    if (params.get("sample") === "1" && data && !data.kits.length) {
+    if (params.get("sample") === "1" && data &&!data.kits.length) {
       const timer = setTimeout(async () => {
         const res = await createSampleKitAction();
         if (res.ok && res.id) {
-          toast("Sample study kit created! 🎉");
+          toast("Sample study kit created! ");
           router.replace(`/kits/${res.id}`);
         }
       }, 400);
@@ -129,16 +129,16 @@ function DashboardInner() {
   }, [params, data, router, toast]);
 
   const grouped = useMemo(() => {
-    const map: Record<string, typeof data extends null ? never : DashData["kits"]> = {};
+    const map: Record<string, typeof data extends null? never: DashData["kits"]> = {};
     if (!data) return [];
     for (const k of data.kits) {
       const key = formatDate(k.updatedAt);
-      (map[key] ??= []).push(k);
+      (map[key]??= []).push(k);
     }
     return Object.entries(map);
   }, [data]);
 
-  if (loading || !data) {
+  if (loading ||!data) {
     return (
       <div className="flex h-[60vh] items-center justify-center">
         <Spinner className="h-7 w-7" />
@@ -157,7 +157,7 @@ function DashboardInner() {
       setClassModal(false);
       load();
     } else {
-      toast(res.error ?? "Could not create class", "error");
+      toast(res.error?? "Could not create class", "error");
     }
   };
 
@@ -166,7 +166,7 @@ function DashboardInner() {
     const res = await copyKitAction(id);
     setBusy(null);
     if (res.ok) toast(`Copy of “${title}” created`);
-    else toast(res.error ?? "Could not copy", "error");
+    else toast(res.error?? "Could not copy", "error");
     load();
   };
 
@@ -189,7 +189,7 @@ function DashboardInner() {
       {/* Greeting */}
       <section>
         <h1 className="font-display text-3xl font-bold tracking-tight text-ink dark:text-cream">
-          Hey {firstName} 👋
+          Hey {firstName} 
         </h1>
         <p className="mt-1 text-[15px] text-ink/60 dark:text-cream/60">
           Ready to turn your notes into grades? Pick a tool below or jump back into a recent kit.
@@ -253,7 +253,7 @@ function DashboardInner() {
           [data.kits.length, "Study kits", BookOpen],
           [data.kits.reduce((a, k) => a + k.cardCount, 0), "Flashcards", Layers],
           [data.assignments.reduce((a, k) => a + k.questionCount, 0), "Assignment questions", ClipboardList],
-          [data.avgScore !== null ? `${data.avgScore}%` : "—", "Avg student score", Zap],
+          [data.avgScore!== null? `${data.avgScore}%`: "—", "Avg student score", Zap],
         ].map(([v, l, Icon]) => {
           const IconC = Icon as typeof BookOpen;
           return (
@@ -282,7 +282,7 @@ function DashboardInner() {
             <FolderPlus size={14} /> New folder
           </Button>
         </div>
-        {data.classes.length ? (
+        {data.classes.length? (
           <div className="flex flex-wrap gap-2.5">
             {data.classes.map((c) => (
               <div
@@ -303,7 +303,7 @@ function DashboardInner() {
               </div>
             ))}
           </div>
-        ) : (
+        ): (
           <p className="rounded-2xl border border-dashed border-ink/15 px-4 py-3 text-[13px] text-ink/50 dark:border-cream/20 dark:text-cream/50">
             No folders yet. Create one for each class you teach or take — e.g. “Biology 4A”.
           </p>
@@ -318,7 +318,7 @@ function DashboardInner() {
             View all →
           </Link>
         </div>
-        {data.kits.length ? (
+        {data.kits.length? (
           <div className="space-y-6">
             {grouped.map(([day, kits]) => (
               <div key={day}>
@@ -351,7 +351,7 @@ function DashboardInner() {
               </div>
             ))}
           </div>
-        ) : (
+        ): (
           <EmptyState
             icon={<Upload size={22} />}
             title="No study kits yet"
@@ -375,7 +375,7 @@ function DashboardInner() {
             View all →
           </Link>
         </div>
-        {data.assignments.length ? (
+        {data.assignments.length? (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {data.assignments.slice(0, 6).map((a) => (
               <Link
@@ -396,7 +396,7 @@ function DashboardInner() {
               </Link>
             ))}
           </div>
-        ) : (
+        ): (
           <EmptyState
             icon={<ClipboardList size={22} />}
             title="No assignments yet"

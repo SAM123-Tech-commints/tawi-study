@@ -71,7 +71,7 @@ export default function WorkspacePage() {
     load();
   }, [load]);
 
-  if (loading || !data) {
+  if (loading ||!data) {
     return (
       <div className="flex h-[60vh] items-center justify-center">
         <Spinner className="h-7 w-7" />
@@ -137,7 +137,7 @@ function TasksTab({ data, onRefresh }: { data: WorkspaceData; onRefresh: () => v
   const [newDue, setNewDue] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
 
-  const todos = data.tasks.filter((t) => !t.done);
+  const todos = data.tasks.filter((t) =>!t.done);
   const dones = data.tasks.filter((t) => t.done);
 
   const add = async () => {
@@ -146,13 +146,13 @@ function TasksTab({ data, onRefresh }: { data: WorkspaceData; onRefresh: () => v
     const res = await createTaskAction({ title: newTitle.trim(), due: newDue });
     setBusy(null);
     if (!res.ok) {
-      toast(res.error ?? "Could not add task", "error");
-      if (/guest/i.test(res.error ?? "")) router.push("/signin");
+      toast(res.error?? "Could not add task", "error");
+      if (/guest/i.test(res.error?? "")) router.push("/signin");
       return;
     }
     setNewTitle("");
     setNewDue("");
-    toast("Task added ✅");
+    toast("Task added ");
     onRefresh();
   };
 
@@ -181,13 +181,13 @@ function TasksTab({ data, onRefresh }: { data: WorkspaceData; onRefresh: () => v
     <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
       {/* Main task list */}
       <div className="space-y-4">
-        {todos.length === 0 && dones.length === 0 ? (
+        {todos.length === 0 && dones.length === 0? (
           <EmptyState
             icon={<CheckCircle2 size={22} />}
             title="No tasks yet"
             desc="Add study tasks, assignment deadlines, or exam prep — check them off as you go."
           />
-        ) : null}
+        ): null}
 
         {/* Open tasks */}
         {todos.length > 0 && (
@@ -228,7 +228,7 @@ function TasksTab({ data, onRefresh }: { data: WorkspaceData; onRefresh: () => v
           <Input type="date" value={newDue} onChange={(e) => setNewDue(e.target.value)} />
         </Field>
         <Button className="mt-4 w-full" onClick={add} disabled={!newTitle.trim() || busy === "add"}>
-          {busy === "add" ? <Spinner className="border-ink/30 border-t-ink" /> : <Plus size={15} />}
+          {busy === "add"? <Spinner className="border-ink/30 border-t-ink" />: <Plus size={15} />}
           Add task
         </Button>
       </Card>
@@ -249,10 +249,10 @@ function TaskRow({
 }) {
   return (
     <div className="flex items-center gap-3 px-4 py-3">
-      <button onClick={() => onToggle(task.id)} disabled={busy !== null} className="shrink-0">
-        {task.done ? (
+      <button onClick={() => onToggle(task.id)} disabled={busy!== null} className="shrink-0">
+        {task.done? (
           <CheckCircle2 size={20} className="text-brand-600 dark:text-brand-400" />
-        ) : (
+        ): (
           <Circle size={20} className="text-ink/25 dark:text-cream/25" />
         )}
       </button>
@@ -273,7 +273,7 @@ function TaskRow({
       </div>
       <button
         onClick={() => onDelete(task.id)}
-        disabled={busy !== null}
+        disabled={busy!== null}
         className="rounded-full p-1.5 text-ink/30 transition hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-500/10"
       >
         <Trash2 size={14} />
@@ -314,13 +314,13 @@ function DocsTab({ data, kind, onRefresh }: { data: WorkspaceData; kind: string;
     const res = await saveDocAction({ id: open?.id || null, kind, title: title.trim(), content });
     setBusy(false);
     if (!res.ok) {
-      toast(res.error ?? "Could not save", "error");
-      if (/guest/i.test(res.error ?? "")) {
+      toast(res.error?? "Could not save", "error");
+      if (/guest/i.test(res.error?? "")) {
         router.push("/signin");
       }
       return;
     }
-    toast(open?.id ? "Note saved 💾" : "Note created ✨");
+    toast(open?.id? "Note saved ": "Note created ");
     setOpen(null);
     onRefresh();
   };
@@ -342,17 +342,17 @@ function DocsTab({ data, kind, onRefresh }: { data: WorkspaceData; kind: string;
           onClick={() => setOpen(null)}
           className="text-sm font-semibold text-ink/55 hover:text-ink dark:text-cream/55 dark:hover:text-cream"
         >
-          ← Back to {kind === "note" ? "notes" : "documents"}
+          ← Back to {kind === "note"? "notes": "documents"}
         </button>
         <Card className="space-y-4 p-5 sm:p-6">
           <Field label="Title">
             <Input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder={kind === "note" ? "e.g. Network Protocols Review" : "e.g. Lab Report Draft"}
+              placeholder={kind === "note"? "e.g. Network Protocols Review": "e.g. Lab Report Draft"}
             />
           </Field>
-          <Field label={kind === "note" ? "Note content" : "Document body"}>
+          <Field label={kind === "note"? "Note content": "Document body"}>
             <RichEditor
               value={content}
               onChange={setContent}
@@ -372,9 +372,9 @@ function DocsTab({ data, kind, onRefresh }: { data: WorkspaceData; kind: string;
               <Button variant="ghost" onClick={() => setOpen(null)}>
                 Cancel
               </Button>
-              <Button onClick={save} disabled={busy || !title.trim()}>
-                {busy ? <Spinner className="border-ink/30 border-t-ink" /> : <Sparkles size={15} />}
-                {open.id ? "Save changes" : "Create note"}
+              <Button onClick={save} disabled={busy ||!title.trim()}>
+                {busy? <Spinner className="border-ink/30 border-t-ink" />: <Sparkles size={15} />}
+                {open.id? "Save changes": "Create note"}
               </Button>
             </div>
           </div>
@@ -387,16 +387,16 @@ function DocsTab({ data, kind, onRefresh }: { data: WorkspaceData; kind: string;
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm font-semibold text-ink/55 dark:text-cream/55">
-          {docs.length} {kind === "note" ? "notes" : "documents"}
+          {docs.length} {kind === "note"? "notes": "documents"}
         </p>
         <Button onClick={startNew}>
-          <Plus size={15} /> New {kind === "note" ? "note" : "document"}
+          <Plus size={15} /> New {kind === "note"? "note": "document"}
         </Button>
       </div>
-      {docs.length === 0 ? (
+      {docs.length === 0? (
         <EmptyState
           icon={<FileText size={22} />}
-          title={`No ${kind === "note" ? "notes" : "documents"} yet`}
+          title={`No ${kind === "note"? "notes": "documents"} yet`}
           desc={
             kind === "note"
               ? "Quick notes, lecture summaries, review sheets — all saved right here."
@@ -408,7 +408,7 @@ function DocsTab({ data, kind, onRefresh }: { data: WorkspaceData; kind: string;
             </Button>
           }
         />
-      ) : (
+      ): (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {docs.map((d) => (
             <button

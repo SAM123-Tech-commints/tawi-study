@@ -41,7 +41,7 @@ function DeleteEventButton({ id, onDeleted }: { id: string; onDeleted: () => voi
     setBusy(false);
     setAsk(false);
     if (!res.ok) {
-      toast(res.error ?? "Could not delete", "error");
+      toast(res.error?? "Could not delete", "error");
       return;
     }
     onDeleted();
@@ -112,7 +112,7 @@ export default function CalendarPage() {
   };
 
   const save = async () => {
-    if (!title.trim() || !date) {
+    if (!title.trim() ||!date) {
       toast("Give your event a title and a date.", "error");
       return;
     }
@@ -122,11 +122,11 @@ export default function CalendarPage() {
       : await createEventAction({ title, date, description: desc, color });
     setBusy(false);
     if (!res.ok) {
-      toast(res.error ?? "Could not save the event", "error");
-      if (/guest/i.test(res.error ?? "")) router.push("/signin");
+      toast(res.error?? "Could not save the event", "error");
+      if (/guest/i.test(res.error?? "")) router.push("/signin");
       return;
     }
-    toast(modal?.event ? "Event updated ✏️" : "Event added 📅");
+    toast(modal?.event? "Event updated ": "Event added ");
     setModal(null);
     load();
   };
@@ -137,7 +137,7 @@ export default function CalendarPage() {
     const res = await deleteEventAction(modal.event.id);
     setBusy(false);
     if (!res.ok) {
-      toast(res.error ?? "Could not delete", "error");
+      toast(res.error?? "Could not delete", "error");
       return;
     }
     toast("Event deleted");
@@ -157,8 +157,8 @@ export default function CalendarPage() {
 
   const byDate = useMemo(() => {
     const map = new Map<string, CalEvent[]>();
-    for (const e of events ?? []) {
-      const list = map.get(e.date) ?? [];
+    for (const e of events?? []) {
+      const list = map.get(e.date)?? [];
       list.push(e);
       map.set(e.date, list);
     }
@@ -170,6 +170,14 @@ export default function CalendarPage() {
     year: "numeric",
   });
   const today = toISO(new Date());
+
+  const upcoming = useMemo(
+    () =>
+      [...(events?? [])]
+        .filter((e) => e.date >= today)
+        .sort((a, b) => a.date.localeCompare(b.date)),
+    [events, today]
+  );
 
   if (events === null) {
     return (
@@ -204,7 +212,7 @@ export default function CalendarPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setCursor((c) => (c.m === 0 ? { y: c.y - 1, m: 11 } : { y: c.y, m: c.m - 1 }))}
+            onClick={() => setCursor((c) => (c.m === 0? { y: c.y - 1, m: 11 }: { y: c.y, m: c.m - 1 }))}
           >
             <ChevronLeft size={15} />
           </Button>
@@ -212,14 +220,14 @@ export default function CalendarPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setCursor((c) => (c.m === 11 ? { y: c.y + 1, m: 0 } : { y: c.y, m: c.m + 1 }))}
+            onClick={() => setCursor((c) => (c.m === 11? { y: c.y + 1, m: 0 }: { y: c.y, m: c.m + 1 }))}
           >
             <ChevronRight size={15} />
           </Button>
         </div>
       </section>
 
-      {events.length === 0 ? (
+      {events.length === 0? (
         <EmptyState
           icon={<CalendarDays size={22} />}
           title="Start planning"
@@ -230,7 +238,7 @@ export default function CalendarPage() {
             </Button>
           }
         />
-      ) : null}
+      ): null}
 
       <Card className="p-3 sm:p-5">
         <div className="mb-2 grid grid-cols-7 text-center text-[11px] font-bold uppercase tracking-widest text-ink/40 dark:text-cream/40">
@@ -240,14 +248,22 @@ export default function CalendarPage() {
         </div>
         <div className="grid grid-cols-7 gap-1.5">
           {cells.map((d, i) =>
-            d === null ? (
+            d === null? (
               <div key={`x${i}`} />
-            ) : (
-              <button
+            ): (
+              <div
                 key={toISO(d)}
+                role="button"
+                tabIndex={0}
                 onClick={() => openNew(toISO(d))}
+                onKeyDown={(ev) => {
+                  if (ev.key === "Enter" || ev.key === " ") {
+                    ev.preventDefault();
+                    openNew(toISO(d));
+                  }
+                }}
                 className={cn(
-                  "min-h-20 rounded-2xl border p-1.5 text-left align-top transition hover:border-brand-500 sm:min-h-24 sm:p-2",
+                  "min-h-20 cursor-pointer rounded-2xl border p-1.5 text-left align-top transition hover:border-brand-500 sm:min-h-24 sm:p-2",
                   toISO(d) === today
                     ? "border-brand-500 bg-brand-50 dark:bg-brand-500/10"
                     : "border-ink/8 bg-surface hover:bg-ink/[0.02] dark:border-cream/10 dark:bg-surface-dark"
@@ -256,41 +272,33 @@ export default function CalendarPage() {
                 <span
                   className={cn(
                     "mb-1 inline-grid h-6 w-6 place-items-center rounded-full text-xs font-bold",
-                    toISO(d) === today ? "bg-brand-500 text-ink" : "text-ink/60 dark:text-cream/60"
+                    toISO(d) === today? "bg-brand-500 text-ink": "text-ink/60 dark:text-cream/60"
                   )}
                 >
                   {d.getDate()}
                 </span>
                 <div className="space-y-1">
-                  {(byDate.get(toISO(d)) ?? []).slice(0, 3).map((e) => (
-                    <span
+                  {(byDate.get(toISO(d))?? []).slice(0, 3).map((e) => (
+                    <button
                       key={e.id}
-                      role="button"
-                      tabIndex={0}
                       onClick={(ev) => {
                         ev.stopPropagation();
                         openEdit(e);
                       }}
-                      onKeyDown={(ev) => {
-                        if (ev.key === "Enter") {
-                          ev.stopPropagation();
-                          openEdit(e);
-                        }
-                      }}
-                      className="block truncate rounded-lg px-1.5 py-0.5 text-[11px] font-bold text-ink"
+                      className="block w-full truncate rounded-lg px-1.5 py-0.5 text-left text-[11px] font-bold text-ink"
                       style={{ background: `${e.color}55`, borderLeft: `3px solid ${e.color}` }}
                       title={e.title}
                     >
                       {e.title}
-                    </span>
+                    </button>
                   ))}
-                  {(byDate.get(toISO(d)) ?? []).length > 3 && (
+                  {(byDate.get(toISO(d))?? []).length > 3 && (
                     <span className="block px-1.5 text-[10px] font-bold text-ink/45 dark:text-cream/45">
-                      +{(byDate.get(toISO(d)) ?? []).length - 3} more
+                      +{(byDate.get(toISO(d))?? []).length - 3} more
                     </span>
                   )}
                 </div>
-              </button>
+              </div>
             )
           )}
         </div>
@@ -299,18 +307,17 @@ export default function CalendarPage() {
       {/* Upcoming list — every event has an explicit edit + delete button */}
       <section>
         <h2 className="font-display mb-3 text-lg font-bold text-ink dark:text-cream">
-          Upcoming ({events.length})
+          Upcoming ({upcoming.length})
         </h2>
-        {events.length === 0 ? (
+        {upcoming.length === 0? (
           <p className="text-sm text-ink/55 dark:text-cream/55">
-            Nothing scheduled — click any day above to add your first event.
+            {events.length === 0
+              ? "Nothing scheduled — click any day above to add your first event."
+              : "No upcoming events — click any day above to plan your next one."}
           </p>
-        ) : (
+        ): (
           <div className="space-y-2">
-            {[...events]
-              .sort((a, b) => a.date.localeCompare(b.date))
-              .slice(0, 20)
-              .map((e) => (
+            {upcoming.slice(0, 20).map((e) => (
                 <div
                   key={e.id}
                   className="flex items-center gap-3 rounded-2xl border border-ink/8 bg-surface p-3 dark:border-cream/10 dark:bg-surface-dark"
@@ -320,7 +327,7 @@ export default function CalendarPage() {
                     <p className="truncate text-sm font-bold text-ink dark:text-cream">{e.title}</p>
                     <p className="text-xs text-ink/50 dark:text-cream/50">
                       {e.date}
-                      {e.description ? ` · ${e.description.slice(0, 80)}` : ""}
+                      {e.description? ` · ${e.description.slice(0, 80)}`: ""}
                     </p>
                   </div>
                   <Button variant="outline" size="sm" onClick={() => openEdit(e)}>
@@ -339,9 +346,9 @@ export default function CalendarPage() {
         )}
       </section>
 
-      <Modal open={modal !== null} onClose={() => setModal(null)}>
+      <Modal open={modal!== null} onClose={() => setModal(null)}>
         <h3 className="font-display text-lg font-bold text-ink dark:text-cream">
-          {modal?.event ? "Edit event" : "New event"}
+          {modal?.event? "Edit event": "New event"}
         </h3>
         <div className="mt-5 space-y-4">
           <Field label="Title">
@@ -382,8 +389,8 @@ export default function CalendarPage() {
           </div>
           <div className="flex gap-2">
             <Button variant="ghost" onClick={() => setModal(null)}>Cancel</Button>
-            <Button onClick={save} disabled={busy || !title.trim()}>
-              {busy ? <Spinner className="border-ink/30 border-t-ink" /> : modal?.event ? "Save changes" : "Add event"}
+            <Button onClick={save} disabled={busy ||!title.trim()}>
+              {busy? <Spinner className="border-ink/30 border-t-ink" />: modal?.event? "Save changes": "Add event"}
             </Button>
           </div>
         </div>

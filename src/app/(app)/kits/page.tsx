@@ -14,7 +14,7 @@ function KitsInner() {
   const params = useSearchParams();
   const { toast } = useToast();
   const [data, setData] = useState<KitsData | null>(null);
-  const [filter, setFilter] = useState<string>(params.get("class") ?? "all");
+  const [filter, setFilter] = useState<string>(params.get("class")?? "all");
   const [busy, setBusy] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -28,17 +28,17 @@ function KitsInner() {
   }, [load]);
 
   const shown = useMemo(
-    () => (filter === "all" ? data?.kits ?? [] : (data?.kits ?? []).filter((k) => k.classId === filter)),
+    () => (filter === "all"? data?.kits?? []: (data?.kits?? []).filter((k) => k.classId === filter)),
     [data, filter]
   );
   const pinned = useMemo(() => shown.filter((k) => (k as { pinned?: boolean }).pinned), [shown]);
-  const unpinned = useMemo(() => shown.filter((k) => !(k as { pinned?: boolean }).pinned), [shown]);
+  const unpinned = useMemo(() => shown.filter((k) =>!(k as { pinned?: boolean }).pinned), [shown]);
 
   const grouped = useMemo(() => {
     const map: Record<string, typeof unpinned> = {};
     for (const k of unpinned) {
       const key = formatDate(k.updatedAt);
-      (map[key] ??= []).push(k);
+      (map[key]??= []).push(k);
     }
     return Object.entries(map);
   }, [shown]);
@@ -71,8 +71,8 @@ function KitsInner() {
     setBusy(id);
     const res = await togglePinKitAction(id);
     setBusy(null);
-    if (res.ok) toast(isPinned ? "Unpinned 📌" : "Pinned to top 📌");
-    else toast(res.error ?? "Could not pin", "error");
+    if (res.ok) toast(isPinned? "Unpinned ": "Pinned to top ");
+    else toast(res.error?? "Could not pin", "error");
     load();
   };
 
@@ -82,7 +82,7 @@ function KitsInner() {
         <div>
           <h1 className="font-display text-3xl font-bold tracking-tight text-ink dark:text-cream">Study kits</h1>
           <p className="mt-1 text-[15px] text-ink/60 dark:text-cream/60">
-            {data.kits.length} kit{data.kits.length === 1 ? "" : "s"} · flashcards, Smart Study, guides & games
+            {data.kits.length} kit{data.kits.length === 1? "": "s"} · flashcards, Smart Study, guides & games
           </p>
         </div>
         <Link href="/kits/new">
@@ -123,7 +123,7 @@ function KitsInner() {
         </div>
       )}
 
-      {shown.length === 0 ? (
+      {shown.length === 0? (
         <EmptyState
           icon={<BookOpen size={22} />}
           title="No study kits here"
@@ -136,7 +136,7 @@ function KitsInner() {
             </Link>
           }
         />
-      ) : (
+      ): (
         <div className="space-y-7">
           {pinned.length > 0 && (
             <div>

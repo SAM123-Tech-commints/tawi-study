@@ -469,8 +469,13 @@ async function generateCardsAI(content: string, count: number): Promise<CardDraf
 const QUESTION_TYPES = [
   "mcq",
   "true_false",
+  "modified_true_false",
+  "identification",
   "short",
+  "essay",
   "enumeration",
+  "ordering",
+  "multiple_response",
   "fill_blank",
   "matching",
 ] as const;
@@ -481,8 +486,13 @@ Read the exact text first, then test the keywords: every question must target a 
 Question types and their EXACT JSON shape:
 - "mcq": a question with 4 options, exactly one correct. "options" = the 4 choices, "answer" = the exact text of the correct option.
 - "true_false": a statement to judge. "options" = [], "answer" = "True" or "False".
+- "modified_true_false": a statement whose underlining/detail may be wrong. "options" = [] when the statement is TRUE, or an array with the one corrected sentence when the statement is FALSE, "answer" = "True" or "False".
+- "identification": give the meaning and ask for the exact term. "question" = "Identify the exact term that matches this meaning: …", "options" = [], "answer" = the term exactly as named in the material.
 - "short": a recall question. "options" = [], "answer" = one complete sentence quoting or closely paraphrasing the material.
+- "essay": an open question asking the student to explain a concept in depth. "options" = [], "answer" = a model answer of 2–5 complete sentences covering the key points.
 - "enumeration": asks the student to list every item of a set ("List the 4 layers of…", "Name the parts of…"). "options" = the array of correct items (one item per entry, exactly as named in the material), "answer" = those items joined with ", ".
+- "ordering": ask the student to arrange a set of steps/items in the correct sequence. "options" = the items IN THE CORRECT ORDER, "answer" = those items joined with " | ".
+- "multiple_response": a "select all that apply" question with 2–4 correct choices among 5–6 options. "options" = all choices (correct + distractors), "answer" = ONLY the correct choices joined with " | ".
 - "fill_blank": one sentence taken from the material with a single blank written as "_____". "question" = the sentence containing "_____", "options" = [] (or 3–5 word-bank choices if it helps), "answer" = the exact word or short phrase that fills the blank.
 - "matching": match terms to their meanings. "options" = an array of "Term :: meaning" pairs (2–5 pairs, ALWAYS separated by " :: "), "answer" = the same pairs joined with "; ".
 
@@ -520,10 +530,20 @@ function validQuestion(q: GenQuestion): boolean {
       return q.options.length === 4 && q.answer.length > 0;
     case "true_false":
       return /^(true|false)$/i.test(q.answer);
+    case "modified_true_false":
+      return /^(true|false)$/i.test(q.answer);
+    case "identification":
+      return q.answer.length > 0;
     case "short":
+      return q.answer.length > 0;
+    case "essay":
       return q.answer.length > 0;
     case "enumeration":
       return q.options.length >= 2;
+    case "ordering":
+      return q.options.length >= 3;
+    case "multiple_response":
+      return q.options.length >= 3 && q.answer.includes("|");
     case "fill_blank":
       return q.answer.length > 0;
     case "matching":

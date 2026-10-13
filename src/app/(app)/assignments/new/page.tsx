@@ -20,6 +20,7 @@ import {
   generateAssignmentQuestionsAction,
 } from "@/lib/actions";
 import { extractPdfText, extractTextFile, renderPdfImagePages } from "@/components/pdf";
+import { QUESTION_TYPE_DESC, QUESTION_TYPE_IDS, QUESTION_TYPE_LABELS } from "@/lib/quiz";
 import {
   Badge,
   Button,
@@ -95,7 +96,7 @@ export default function NewAssignmentPage() {
 
   const next = async () => {
     if (step === 1) {
-      if (!teacherName.trim() || !className.trim() || !title.trim()) {
+      if (!teacherName.trim() ||!className.trim() ||!title.trim()) {
         toast("Fill in your name, class name and assignment title.", "error");
         return;
       }
@@ -105,8 +106,8 @@ export default function NewAssignmentPage() {
         className,
         dueDate,
       });
-      if (!res.ok || !res.id) {
-        toast(res.error ?? "Could not create assignment", "error");
+      if (!res.ok ||!res.id) {
+        toast(res.error?? "Could not create assignment", "error");
         return;
       }
       setAssignmentId(res.id);
@@ -128,18 +129,18 @@ export default function NewAssignmentPage() {
       sourceName: name,
     });
     if (!res.ok) {
-      toast(res.error ?? "Could not add content", "error");
+      toast(res.error?? "Could not add content", "error");
       return;
     }
-    setContent(res ? text.slice(0, Math.max(1, pages) * 3200) : "");
+    setContent(res? text.slice(0, Math.max(1, pages) * 3200): "");
     setSourceName(name);
     toast(`“${name}” added — ${Math.min(text.length, pages * 3200).toLocaleString()} characters`);
   };
 
   const dataUrlToBlob = (dataUrl: string): Blob => {
     const [head, b64] = dataUrl.split(",");
-    const mime = /data:(.*?);base64/.exec(head)?.[1] ?? "image/png";
-    const bin = atob(b64 ?? "");
+    const mime = /data:(.*?);base64/.exec(head)?.[1]?? "image/png";
+    const bin = atob(b64?? "");
     const arr = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
     return new Blob([arr], { type: mime });
@@ -156,7 +157,7 @@ export default function NewAssignmentPage() {
           form.append("mode", "figures");
           const res = await fetch("/api/vision", { method: "POST", body: form });
           const data = await res.json();
-          return data?.ok && data.text ? `【Page ${p.page} — images & diagrams】\n${data.text}` : "";
+          return data?.ok && data.text? `【Page ${p.page} — images & diagrams】\n${data.text}`: "";
         } catch {
           return "";
         }
@@ -177,7 +178,7 @@ export default function NewAssignmentPage() {
           try {
             const imgPages = await renderPdfImagePages(file, { maxPages: 6 });
             if (imgPages.length) {
-              toast(`Reading ${imgPages.length} image/diagram page${imgPages.length > 1 ? "s" : ""} with AI…`);
+              toast(`Reading ${imgPages.length} image/diagram page${imgPages.length > 1? "s": ""} with AI…`);
               const extra = await visionReadPages(imgPages);
               if (extra.trim()) text = `${text}\n\n${extra}`.trim();
             }
@@ -186,15 +187,15 @@ export default function NewAssignmentPage() {
           }
         }
       } else if (isImage) {
-        const endpoint = visionOn ? "/api/vision" : "/api/ocr";
+        const endpoint = visionOn? "/api/vision": "/api/ocr";
         const form = new FormData();
         form.append("file", file);
         if (visionOn) form.append("mode", "full");
         const res = await fetch(endpoint, { method: "POST", body: form });
         const data = await res.json();
-        if (data?.ok && (data.text?.length ?? 0) > 40) {
-          await addContent(data.text, file.name + (visionOn ? " (AI vision)" : " (OCR)"));
-          toast(visionOn ? "Image read with AI vision ✨" : "Image text extracted");
+        if (data?.ok && (data.text?.length?? 0) > 40) {
+          await addContent(data.text, file.name + (visionOn? " (AI vision)": " (OCR)"));
+          toast(visionOn? "Image read with AI vision ": "Image text extracted");
           setExtracting(false);
           return;
         }
@@ -220,10 +221,10 @@ export default function NewAssignmentPage() {
     const res = await fetchUrlAction(url.trim());
     setExtracting(false);
     if (!res.ok) {
-      toast(res.error ?? "Could not fetch this link", "error");
+      toast(res.error?? "Could not fetch this link", "error");
       return;
     }
-    await addContent(res.text ?? "", res.title ?? "Web content");
+    await addContent(res.text?? "", res.title?? "Web content");
     setUrl("");
   };
 
@@ -243,7 +244,7 @@ export default function NewAssignmentPage() {
     });
     setGenerating(false);
     if (!res.ok) {
-      toast(res.error ?? "Could not generate questions", "error");
+      toast(res.error?? "Could not generate questions", "error");
       return;
     }
     setQuestionCount(res.created);
@@ -265,22 +266,17 @@ export default function NewAssignmentPage() {
     );
   }
 
-  const TYPE_OPTIONS = [
-    ["mcq", "Multiple choice", "4 options, one correct"],
-    ["true_false", "True / False", "Spot the false statement"],
-    ["short", "Short answer", "Answer in 1–2 sentences"],
-    ["enumeration", "Enumeration", "List the items / steps"],
-    ["fill_blank", "Fill in the blank", "Recall the missing term"],
-    ["matching", "Matching", "Pair terms to definitions"],
-  ] as const;
+  const TYPE_OPTIONS = QUESTION_TYPE_IDS.map(
+    (id) => [id, QUESTION_TYPE_LABELS[id], QUESTION_TYPE_DESC[id]] as const
+  );
 
   return (
     <div className="mx-auto max-w-3xl">
       <button
-        onClick={() => (step === 1 ? router.back() : setStep((s) => s - 1))}
+        onClick={() => (step === 1? router.back(): setStep((s) => s - 1))}
         className="mb-4 inline-flex items-center gap-1.5 text-sm font-semibold text-ink/55 hover:text-ink dark:text-cream/55 dark:hover:text-cream"
       >
-        <ArrowLeft size={15} /> {step === 1 ? "Back" : "Previous step"}
+        <ArrowLeft size={15} /> {step === 1? "Back": "Previous step"}
       </button>
 
       {/* Stepper */}
@@ -290,10 +286,10 @@ export default function NewAssignmentPage() {
             <div
               className={cn(
                 "h-1.5 rounded-full transition-colors",
-                step >= i + 1 ? (step > i + 1 ? "bg-brand-500" : "bg-brand-500 animate-pulse") : "bg-ink/10 dark:bg-cream/15"
+                step >= i + 1? (step > i + 1? "bg-brand-500": "bg-brand-500 animate-pulse"): "bg-ink/10 dark:bg-cream/15"
               )}
             />
-            <span className={cn("text-[11px] font-bold", step === i + 1 ? "text-ink dark:text-cream" : "text-ink/40 dark:text-cream/40")}>
+            <span className={cn("text-[11px] font-bold", step === i + 1? "text-ink dark:text-cream": "text-ink/40 dark:text-cream/40")}>
               {i + 1}. {label}
             </span>
           </div>
@@ -353,7 +349,7 @@ export default function NewAssignmentPage() {
                     : "border-ink/10 bg-surface hover:border-ink/25 dark:border-cream/15 dark:bg-surface-dark"
                 )}
               >
-                <Icon size={20} className={cn("mx-auto mb-1.5", mode === m ? "text-violet-600 dark:text-violet-300" : "text-ink/50 dark:text-cream/50")} />
+                <Icon size={20} className={cn("mx-auto mb-1.5", mode === m? "text-violet-600 dark:text-violet-300": "text-ink/50 dark:text-cream/50")} />
                 <span className="text-[13px] font-bold text-ink dark:text-cream">{label}</span>
               </button>
             ))}
@@ -369,26 +365,26 @@ export default function NewAssignmentPage() {
                 onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
               />
               <div
-                onClick={() => !extracting && fileRef.current?.click()}
+                onClick={() =>!extracting && fileRef.current?.click()}
                 onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
                 onDragLeave={() => setDragOver(false)}
                 onDrop={(e) => {
                   e.preventDefault();
                   setDragOver(false);
                   const f = e.dataTransfer.files?.[0];
-                  if (f && !extracting) handleFile(f);
+                  if (f &&!extracting) handleFile(f);
                 }}
                 className={cn(
                   "cursor-pointer rounded-2xl border-2 border-dashed p-8 text-center transition",
-                  dragOver ? "border-violet-500 bg-violet-50 dark:bg-violet-500/10" : "border-ink/15 hover:border-violet-500 dark:border-cream/20"
+                  dragOver? "border-violet-500 bg-violet-50 dark:bg-violet-500/10": "border-ink/15 hover:border-violet-500 dark:border-cream/20"
                 )}
               >
-                {extracting ? (
+                {extracting? (
                   <>
                     <Spinner className="mx-auto h-6 w-6" />
                     <p className="mt-3 text-sm font-semibold text-ink/60 dark:text-cream/60">Reading your file…</p>
                   </>
-                ) : (
+                ): (
                   <>
                     <span className="mx-auto grid h-13 w-13 place-items-center rounded-2xl bg-violet-500 p-3 text-white">
                       <UploadCloud size={26} />
@@ -396,7 +392,7 @@ export default function NewAssignmentPage() {
                     <p className="mt-3 text-[15px] font-bold text-ink dark:text-cream">Click the cloud or drop your file</p>
                     <p className="mt-1 text-[13px] text-ink/50 dark:text-cream/50">
                       PDF, images, TXT, MD, CSV · up to 80 pages ·{" "}
-                      {visionOn ? "AI reads diagrams & images" : "images use OCR"}
+                      {visionOn? "AI reads diagrams & images": "images use OCR"}
                     </p>
                   </>
                 )}
@@ -414,8 +410,8 @@ export default function NewAssignmentPage() {
           {mode === "link" && (
             <div className="flex gap-2">
               <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://youtube.com/watch?v=… or any article URL" onKeyDown={(e) => e.key === "Enter" && fetchLink()} />
-              <Button variant="dark" onClick={fetchLink} disabled={extracting || !url.trim()}>
-                {extracting ? <Spinner className="border-cream/30 border-t-cream" /> : "Fetch"}
+              <Button variant="dark" onClick={fetchLink} disabled={extracting ||!url.trim()}>
+                {extracting? <Spinner className="border-cream/30 border-t-cream" />: "Fetch"}
               </Button>
             </div>
           )}
@@ -447,7 +443,9 @@ export default function NewAssignmentPage() {
                 <p className="flex items-center gap-2 text-sm font-bold text-ink dark:text-cream">
                   <FileText size={15} /> {sourceName || "Learning material"}
                 </p>
-                <Badge tone="green">✓ Added</Badge>
+                <Badge tone="green">
+                  <Check size={12} /> Added
+                </Badge>
               </div>
               <p className="line-clamp-4 text-[13px] leading-relaxed text-ink/60 dark:text-cream/60">
                 {content.slice(0, 600)}…
@@ -483,7 +481,7 @@ export default function NewAssignmentPage() {
                   return (
                     <button
                       key={id}
-                      onClick={() => setTypes((t) => (on ? t.filter((x) => x !== id) : [...t, id]))}
+                      onClick={() => setTypes((t) => (on? t.filter((x) => x!== id): [...t, id]))}
                       className={cn(
                         "rounded-2xl border-2 p-3.5 text-left transition",
                         on
@@ -493,7 +491,7 @@ export default function NewAssignmentPage() {
                     >
                       <span className="flex items-center justify-between text-[13.5px] font-bold text-ink dark:text-cream">
                         {label}
-                        <span className={cn("grid h-5 w-5 place-items-center rounded-full", on ? "bg-brand-500 text-ink" : "bg-ink/10 dark:bg-cream/15")}>
+                        <span className={cn("grid h-5 w-5 place-items-center rounded-full", on? "bg-brand-500 text-ink": "bg-ink/10 dark:bg-cream/15")}>
                           {on && <Check size={12} strokeWidth={3} />}
                         </span>
                       </span>
@@ -527,7 +525,7 @@ export default function NewAssignmentPage() {
                 <GraduationCap size={24} />
               </span>
               <div>
-                <h2 className="font-display text-xl font-bold text-ink dark:text-cream">Tada! 🎉 {questionCount} questions generated</h2>
+                <h2 className="font-display text-xl font-bold text-ink dark:text-cream">Tada! {questionCount} questions generated</h2>
                 <p className="mt-1 text-sm text-ink/60 dark:text-cream/60">
                   Review them on the assignment page — you can delete any question and generate more anytime.
                 </p>

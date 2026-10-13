@@ -57,7 +57,7 @@ export function PublicKitView({ data }: { data: PublicData }) {
       <div className="mb-6 flex justify-center">
         <Tabs
           tabs={[
-            { id: "ai", label: "✨ AI summary" },
+            { id: "ai", label: "AI summary" },
             { id: "exact", label: "Exact text" },
             { id: "notes", label: "Study notes" },
           ]}
@@ -172,7 +172,9 @@ export function PublicKitView({ data }: { data: PublicData }) {
             <p className="mb-4 text-lg font-bold leading-relaxed">{q.question}</p>
             {revealed ? (
               <div className="rounded-2xl bg-green-50 p-4 text-sm leading-relaxed text-green-900 animate-pop dark:bg-green-500/10 dark:text-green-300">
-                <span className="font-bold">✓ {q.answer}</span>
+                <span className="inline-flex items-center gap-1.5 font-bold">
+                  <Check size={14} /> {q.answer}
+                </span>
                 {q.explanation && (
                   <span className="mt-2 block border-t border-green-200/70 pt-2 text-green-800/80 dark:border-green-500/20 dark:text-green-300/80">
                     {q.explanation}
@@ -210,8 +212,8 @@ export function PublicKitView({ data }: { data: PublicData }) {
                 </div>
               )}
               {answered > 0 && (
-                <span className="self-center text-sm font-bold text-brand-700 dark:text-brand-400">
-                  {answered} answered ✓
+                <span className="inline-flex items-center gap-1 self-center text-sm font-bold text-brand-700 dark:text-brand-400">
+                  <Check size={14} /> {answered} answered
                 </span>
               )}
             </div>

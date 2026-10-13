@@ -3,27 +3,29 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Check,
-  CheckCheck,
-  Crown,
-  GraduationCap,
-  ImagePlus,
-  Loader2,
-  Megaphone,
-  MessageCircle,
-  Pin,
-  Plus,
-  Search,
-  Send,
-  Shield,
-  Smile,
-  Sparkles,
-  Trash2,
-  UserMinus,
-  UserPlus,
-  Users,
-  VolumeX,
-  X,
+Check,
+CheckCheck,
+Crown,
+GraduationCap,
+ImagePlus,
+Loader2,
+Megaphone,
+MessageCircle,
+Pin,
+Plus,
+Search,
+Send,
+Shield,
+Smile,
+Sparkles,
+Trash2,
+UserMinus,
+UserPlus,
+Users,
+VolumeX,
+X,
+CalendarDays,
+School,
 } from "lucide-react";
 import {
   addCommentAction,
@@ -90,7 +92,7 @@ const BANNER_GRADIENTS: Record<string, string> = {
   rose: "from-rose-300 to-rose-500",
 };
 function bannerClass(banner: string | null): string {
-  return BANNER_GRADIENTS[banner ?? "lime"] ?? BANNER_GRADIENTS.lime;
+  return BANNER_GRADIENTS[banner?? "lime"]?? BANNER_GRADIENTS.lime;
 }
 
 function UserAvatar({ name, avatar, size = 40 }: { name: string; avatar: string | null; size?: number }) {
@@ -122,10 +124,10 @@ function PresenceAvatar({
     <span className="relative inline-flex shrink-0">
       <UserAvatar name={person.name} avatar={person.avatar} size={size} />
       <span
-        title={person.online ? "Online" : "Offline"}
+        title={person.online? "Online": "Offline"}
         className={cn(
           "absolute -bottom-0.5 -right-0.5 rounded-full border-2 border-surface dark:border-surface-dark",
-          person.online ? "bg-green-500" : "bg-ink/25 dark:bg-cream/30"
+          person.online? "bg-green-500": "bg-ink/25 dark:bg-cream/30"
         )}
         style={{ width: dot, height: dot }}
       />
@@ -199,7 +201,7 @@ export default function Community() {
     [router]
   );
 
-  if (loading || !data) {
+  if (loading ||!data) {
     return (
       <div className="flex h-[50vh] items-center justify-center">
         <Spinner className="h-7 w-7" />
@@ -208,7 +210,7 @@ export default function Community() {
   }
 
   const { me } = data;
-  const canParticipate = !me.isGuest && !me.muted;
+  const canParticipate =!me.isGuest &&!me.muted;
 
   return (
     <div className="space-y-5">
@@ -235,15 +237,15 @@ export default function Community() {
         ))}
       </div>
 
-      {view === "chats" ? (
+      {view === "chats"? (
         <ChatsTab me={me} />
-      ) : view === "groups" ? (
+      ): view === "groups"? (
         <GroupsTab me={me} />
-      ) : (
+      ): (
       <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
       {/* ------------------------------- FEED ------------------------------- */}
       <div className="space-y-5">
-        {me.isGuest ? (
+        {me.isGuest? (
           <Card className="flex items-center justify-between gap-3 border-brand-500/30 bg-brand-50/60 dark:bg-brand-500/10">
             <p className="text-sm font-medium text-ink/70 dark:text-cream/70">
               You&apos;re browsing as a guest. Create a free account to post, react and add friends.
@@ -252,24 +254,24 @@ export default function Community() {
               Sign in
             </Button>
           </Card>
-        ) : me.muted ? (
+        ): me.muted? (
           <Card className="flex items-center gap-2.5 border-red-500/30 bg-red-50/60 dark:bg-red-500/10">
             <VolumeX size={18} className="text-red-500" />
             <p className="text-sm font-medium text-ink/70 dark:text-cream/70">
               An admin has muted you in the community. You can still read posts, but can&apos;t post, comment or react.
             </p>
           </Card>
-        ) : (
+        ): (
           <Composer me={me} onPosted={refresh} onError={bumpGuest} />
         )}
 
-        {data.posts.length === 0 ? (
+        {data.posts.length === 0? (
           <EmptyState
             icon={<Sparkles size={22} />}
             title="No posts yet"
             desc="Be the first to share an update, a question, or a win with the community."
           />
-        ) : (
+        ): (
           <div className="space-y-4">
             {data.posts.map((post) => (
               <PostCard
@@ -339,7 +341,7 @@ function GroupsTab({ me }: { me: CommunityData["me"] }) {
     async (groupId: string) => {
       const res = await getGroupMessagesAction(groupId);
       if (!res.ok) {
-        toast(res.error ?? "Could not open group", "error");
+        toast(res.error?? "Could not open group", "error");
         return;
       }
       setMessages(res.messages);
@@ -365,8 +367,8 @@ function GroupsTab({ me }: { me: CommunityData["me"] }) {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages, openId]);
 
-  const open = groups.find((g) => g.id === openId) ?? null;
-  const invitable = friends.filter((f) => !open?.members.some((m) => m.id === f.id));
+  const open = groups.find((g) => g.id === openId)?? null;
+  const invitable = friends.filter((f) =>!open?.members.some((m) => m.id === f.id));
 
   const create = async () => {
     if (creating) return;
@@ -374,14 +376,14 @@ function GroupsTab({ me }: { me: CommunityData["me"] }) {
     const res = await createGroupAction({ name: gName, memberIds: picked });
     setCreating(false);
     if (!res.ok) {
-      toast(res.error ?? "Could not create group", "error");
-      if (/guest|sign in/i.test(res.error ?? "")) router.push("/signin");
+      toast(res.error?? "Could not create group", "error");
+      if (/guest|sign in/i.test(res.error?? "")) router.push("/signin");
       return;
     }
     setGName("");
     setPicked([]);
     setShowCreate(false);
-    toast("Group chat created 🎉");
+    toast("Group chat created ");
     await loadAll();
     if (res.id) {
       setOpenId(res.id);
@@ -393,10 +395,10 @@ function GroupsTab({ me }: { me: CommunityData["me"] }) {
     if (!openId) return;
     const res = await inviteToGroupAction({ groupId: openId, userId });
     if (!res.ok) {
-      toast(res.error ?? "Could not invite", "error");
+      toast(res.error?? "Could not invite", "error");
       return;
     }
-    toast("Invited to the group 🤝");
+    toast("Invited to the group ");
     await loadAll();
   };
 
@@ -405,7 +407,7 @@ function GroupsTab({ me }: { me: CommunityData["me"] }) {
     setAskLeave(false);
     const res = await leaveGroupAction(openId);
     if (!res.ok) {
-      toast(res.error ?? "Could not leave", "error");
+      toast(res.error?? "Could not leave", "error");
       return;
     }
     toast("Left the group");
@@ -419,7 +421,7 @@ function GroupsTab({ me }: { me: CommunityData["me"] }) {
     setAskDelete(false);
     const res = await deleteGroupAction(openId);
     if (!res.ok) {
-      toast(res.error ?? "Could not delete", "error");
+      toast(res.error?? "Could not delete", "error");
       return;
     }
     toast("Group deleted");
@@ -439,19 +441,19 @@ function GroupsTab({ me }: { me: CommunityData["me"] }) {
       return;
     }
     const reader = new FileReader();
-    reader.onload = () => setGImage(String(reader.result ?? ""));
+    reader.onload = () => setGImage(String(reader.result?? ""));
     reader.onerror = () => toast("Could not read that image.", "error");
     reader.readAsDataURL(file);
   };
 
   const send = async () => {
     const body = draft.trim();
-    if ((!body && !gImage) || !openId || sending) return;
+    if ((!body &&!gImage) ||!openId || sending) return;
     setSending(true);
     const res = await sendGroupMessageAction({ groupId: openId, content: body, image: gImage });
     setSending(false);
     if (!res.ok) {
-      toast(res.error ?? "Could not send", "error");
+      toast(res.error?? "Could not send", "error");
       return;
     }
     setDraft("");
@@ -489,14 +491,14 @@ function GroupsTab({ me }: { me: CommunityData["me"] }) {
           <Plus size={15} /> New group chat
         </Button>
         <Card className="max-h-[52vh] space-y-1 overflow-auto p-3">
-          {groups.length === 0 ? (
+          {groups.length === 0? (
             <div className="p-3 text-center">
               <p className="text-sm font-bold text-ink dark:text-cream">No groups yet</p>
               <p className="mt-1 text-[13px] text-ink/55 dark:text-cream/55">
                 Create a GC and invite your friends.
               </p>
             </div>
-          ) : (
+          ): (
             groups.map((g) => (
               <button
                 key={g.id}
@@ -507,7 +509,7 @@ function GroupsTab({ me }: { me: CommunityData["me"] }) {
                 }}
                 className={cn(
                   "flex w-full items-center gap-2.5 rounded-2xl p-2 text-left transition active:scale-[0.99]",
-                  openId === g.id ? "bg-brand-100 dark:bg-brand-500/15" : "hover:bg-ink/[0.04] dark:hover:bg-cream/[0.06]"
+                  openId === g.id? "bg-brand-100 dark:bg-brand-500/15": "hover:bg-ink/[0.04] dark:hover:bg-cream/[0.06]"
                 )}
               >
                 <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-brand-500 text-base font-extrabold text-ink">
@@ -516,8 +518,8 @@ function GroupsTab({ me }: { me: CommunityData["me"] }) {
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[13px] font-bold text-ink dark:text-cream">{g.name}</span>
                   <span className="block truncate text-[12px] text-ink/50 dark:text-cream/50">
-                    {g.members.length} member{g.members.length === 1 ? "" : "s"}
-                    {g.lastMessage ? ` · ${g.lastMessage}` : ""}
+                    {g.members.length} member{g.members.length === 1? "": "s"}
+                    {g.lastMessage? ` · ${g.lastMessage}`: ""}
                   </span>
                 </span>
               </button>
@@ -528,7 +530,7 @@ function GroupsTab({ me }: { me: CommunityData["me"] }) {
 
       {/* Thread */}
       <Card className="flex max-h-[60vh] min-h-[320px] flex-col p-4">
-        {!open ? (
+        {!open? (
           <div className="grid flex-1 place-items-center text-center">
             <div>
               <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-ink/5 text-ink/50 dark:bg-cream/10 dark:text-cream/50">
@@ -538,7 +540,7 @@ function GroupsTab({ me }: { me: CommunityData["me"] }) {
               <p className="mt-1 text-[13px] text-ink/55 dark:text-cream/55">Or create one and invite friends.</p>
             </div>
           </div>
-        ) : (
+        ): (
           <>
             <div className="mb-3 flex items-center justify-between gap-2 border-b border-ink/8 pb-3 dark:border-cream/10">
               <div className="min-w-0">
@@ -563,7 +565,7 @@ function GroupsTab({ me }: { me: CommunityData["me"] }) {
             </div>
             <div className="flex-1 space-y-2 overflow-auto py-1">
               {messages.map((m) => (
-                <div key={m.id} className={cn("flex gap-2", m.mine ? "justify-end" : "justify-start")}>
+                <div key={m.id} className={cn("flex gap-2", m.mine? "justify-end": "justify-start")}>
                   {!m.mine && <UserAvatar name={m.senderName} avatar={m.senderAvatar} size={28} />}
                   <div
                     className={cn(
@@ -580,8 +582,8 @@ function GroupsTab({ me }: { me: CommunityData["me"] }) {
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={m.image} alt="Attached" className="mb-1.5 max-h-48 rounded-xl object-cover" loading="lazy" />
                     )}
-                    {m.content ? <p className="whitespace-pre-wrap break-words">{m.content}</p> : null}
-                    <p className={cn("mt-0.5 text-right text-[10px]", m.mine ? "text-ink/55" : "text-ink/40 dark:text-cream/40")}>
+                    {m.content? <p className="whitespace-pre-wrap break-words">{m.content}</p>: null}
+                    <p className={cn("mt-0.5 text-right text-[10px]", m.mine? "text-ink/55": "text-ink/40 dark:text-cream/40")}>
                       {timeAgo(m.createdAt)}
                     </p>
                   </div>
@@ -627,15 +629,15 @@ function GroupsTab({ me }: { me: CommunityData["me"] }) {
                 placeholder={`Message ${open.name}…`}
                 maxLength={1000}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
+                  if (e.key === "Enter" &&!e.shiftKey) {
                     e.preventDefault();
                     send();
                   }
                 }}
                 className="h-10"
               />
-              <Button onClick={send} disabled={sending || (!draft.trim() && !gImage)} className="shrink-0">
-                {sending ? <Spinner className="h-4 w-4 border-ink/30 border-t-ink" /> : <Send size={15} />}
+              <Button onClick={send} disabled={sending || (!draft.trim() &&!gImage)} className="shrink-0">
+                {sending? <Spinner className="h-4 w-4 border-ink/30 border-t-ink" />: <Send size={15} />}
               </Button>
             </div>
           </>
@@ -651,18 +653,18 @@ function GroupsTab({ me }: { me: CommunityData["me"] }) {
           </Field>
           <Field label="Invite friends" hint="Only friends can be invited.">
             <div className="max-h-48 space-y-1 overflow-auto">
-              {friends.length === 0 ? (
+              {friends.length === 0? (
                 <p className="text-[13px] text-ink/50 dark:text-cream/50">
                   No friends yet — add friends from the Feed first.
                 </p>
-              ) : (
+              ): (
                 friends.map((f) => (
                   <label key={f.id} className="flex cursor-pointer items-center gap-2.5 rounded-xl p-1.5 transition hover:bg-ink/[0.04] dark:hover:bg-cream/[0.06]">
                     <input
                       type="checkbox"
                       checked={picked.includes(f.id)}
                       onChange={() =>
-                        setPicked((p) => (p.includes(f.id) ? p.filter((x) => x !== f.id) : [...p, f.id]))
+                        setPicked((p) => (p.includes(f.id)? p.filter((x) => x!== f.id): [...p, f.id]))
                       }
                       className="h-4 w-4 accent-[#96C51F]"
                     />
@@ -678,8 +680,8 @@ function GroupsTab({ me }: { me: CommunityData["me"] }) {
           <Button variant="ghost" onClick={() => setShowCreate(false)}>
             Cancel
           </Button>
-          <Button onClick={create} disabled={creating || gName.trim().length < 2 || !picked.length}>
-            {creating ? <Spinner className="h-4 w-4 border-ink/30 border-t-ink" /> : <Plus size={15} />}
+          <Button onClick={create} disabled={creating || gName.trim().length < 2 ||!picked.length}>
+            {creating? <Spinner className="h-4 w-4 border-ink/30 border-t-ink" />: <Plus size={15} />}
             Create GC
           </Button>
         </div>
@@ -687,11 +689,11 @@ function GroupsTab({ me }: { me: CommunityData["me"] }) {
 
       {/* Invite modal */}
       <Modal open={showInvite} onClose={() => setShowInvite(false)}>
-        <h3 className="font-display text-lg font-bold text-ink dark:text-cream">Invite to {open?.name ?? "group"}</h3>
+        <h3 className="font-display text-lg font-bold text-ink dark:text-cream">Invite to {open?.name?? "group"}</h3>
         <div className="mt-4 max-h-64 space-y-1 overflow-auto">
-          {invitable.length === 0 ? (
-            <p className="text-[13px] text-ink/50 dark:text-cream/50">All your friends are already here 🎉</p>
-          ) : (
+          {invitable.length === 0? (
+            <p className="text-[13px] text-ink/50 dark:text-cream/50">All your friends are already here </p>
+          ): (
             invitable.map((f) => (
               <div key={f.id} className="flex items-center gap-2.5 rounded-xl p-1.5">
                 <UserAvatar name={f.name} avatar={f.avatar} size={32} />
@@ -712,7 +714,7 @@ function GroupsTab({ me }: { me: CommunityData["me"] }) {
 
       <ConfirmDialog
         open={askLeave}
-        title={`Leave ${open?.name ?? "group"}?`}
+        title={`Leave ${open?.name?? "group"}?`}
         message="You'll stop receiving its messages. The group stays for everyone else."
         confirmLabel="Leave"
         danger
@@ -721,7 +723,7 @@ function GroupsTab({ me }: { me: CommunityData["me"] }) {
       />
       <ConfirmDialog
         open={askDelete}
-        title={`Delete ${open?.name ?? "group"}?`}
+        title={`Delete ${open?.name?? "group"}?`}
         message="All messages disappear for everyone. This can't be undone."
         confirmLabel="Delete"
         danger
@@ -760,7 +762,7 @@ function ChatsTab({ me }: { me: CommunityData["me"] }) {
     async (friendId: string) => {
       const res = await getConversationAction(friendId);
       if (!res.ok) {
-        toast(res.error ?? "Could not open chat", "error");
+        toast(res.error?? "Could not open chat", "error");
         return;
       }
       setMessages(res.messages);
@@ -827,20 +829,20 @@ function ChatsTab({ me }: { me: CommunityData["me"] }) {
       return;
     }
     const reader = new FileReader();
-    reader.onload = () => setChatImage(String(reader.result ?? ""));
+    reader.onload = () => setChatImage(String(reader.result?? ""));
     reader.onerror = () => toast("Could not read that image.", "error");
     reader.readAsDataURL(file);
   };
 
   const send = async () => {
     const body = draft.trim();
-    if ((!body && !chatImage) || !openId || sending) return;
+    if ((!body &&!chatImage) ||!openId || sending) return;
     setSending(true);
     const res = await sendMessageAction({ friendId: openId, content: body, image: chatImage });
     setSending(false);
     if (!res.ok) {
-      toast(res.error ?? "Could not send", "error");
-      if (/guest|sign in/i.test(res.error ?? "")) router.push("/signin");
+      toast(res.error?? "Could not send", "error");
+      if (/guest|sign in/i.test(res.error?? "")) router.push("/signin");
       return;
     }
     setDraft("");
@@ -849,7 +851,7 @@ function ChatsTab({ me }: { me: CommunityData["me"] }) {
     await loadChats();
   };
 
-  const open = chats.find((c) => c.id === openId) ?? null;
+  const open = chats.find((c) => c.id === openId)?? null;
 
   if (loading) {
     return (
@@ -876,30 +878,30 @@ function ChatsTab({ me }: { me: CommunityData["me"] }) {
     <div className="grid gap-4 md:grid-cols-[280px_1fr]">
       {/* Conversation list */}
       <Card className="max-h-[60vh] space-y-1 overflow-auto p-3">
-        {chats.length === 0 ? (
+        {chats.length === 0? (
           <div className="p-3 text-center">
             <p className="text-sm font-bold text-ink dark:text-cream">No chats yet</p>
             <p className="mt-1 text-[13px] text-ink/55 dark:text-cream/55">
               Add friends from the Feed → Discover people, then chat here.
             </p>
           </div>
-        ) : (
+        ): (
           chats.map((c) => (
             <button
               key={c.id}
               onClick={() => openChat(c.id)}
               className={cn(
                 "flex w-full items-center gap-2.5 rounded-2xl p-2 text-left transition active:scale-[0.99]",
-                openId === c.id ? "bg-brand-100 dark:bg-brand-500/15" : "hover:bg-ink/[0.04] dark:hover:bg-cream/[0.06]"
+                openId === c.id? "bg-brand-100 dark:bg-brand-500/15": "hover:bg-ink/[0.04] dark:hover:bg-cream/[0.06]"
               )}
             >
               <span className="relative inline-flex shrink-0">
                 <UserAvatar name={c.name} avatar={c.avatar} size={40} />
                 <span
-                  title={c.online ? "Online" : "Offline"}
+                  title={c.online? "Online": "Offline"}
                   className={cn(
                     "absolute -bottom-0.5 -right-0.5 rounded-full border-2 border-surface dark:border-surface-dark",
-                    c.online ? "bg-green-500" : "bg-ink/25 dark:bg-cream/30"
+                    c.online? "bg-green-500": "bg-ink/25 dark:bg-cream/30"
                   )}
                   style={{ width: 12, height: 12 }}
                 />
@@ -914,7 +916,7 @@ function ChatsTab({ me }: { me: CommunityData["me"] }) {
                   )}
                 </span>
                 <span className="block truncate text-[12px] text-ink/50 dark:text-cream/50">
-                  {c.lastMessage ? `${c.lastMine ? "You: " : ""}${c.lastMessage}` : "Say hi 👋"}
+                  {c.lastMessage? `${c.lastMine? "You: ": ""}${c.lastMessage}`: "Say hi "}
                 </span>
               </span>
             </button>
@@ -924,7 +926,7 @@ function ChatsTab({ me }: { me: CommunityData["me"] }) {
 
       {/* Thread */}
       <Card className="flex max-h-[60vh] min-h-[320px] flex-col p-4">
-        {!open ? (
+        {!open? (
           <div className="grid flex-1 place-items-center text-center">
             <div>
               <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-ink/5 text-ink/50 dark:bg-cream/10 dark:text-cream/50">
@@ -934,7 +936,7 @@ function ChatsTab({ me }: { me: CommunityData["me"] }) {
               <p className="mt-1 text-[13px] text-ink/55 dark:text-cream/55">Only friends can message each other.</p>
             </div>
           </div>
-        ) : (
+        ): (
           <>
             <div className="mb-3 flex items-center gap-2.5 border-b border-ink/8 pb-3 dark:border-cream/10">
               <UserAvatar name={open.name} avatar={open.avatar} size={34} />
@@ -943,8 +945,8 @@ function ChatsTab({ me }: { me: CommunityData["me"] }) {
                   {open.name}
                   {open.online && <span className="inline-block h-2 w-2 rounded-full bg-green-500" />}
                 </p>
-                <p className={cn("text-[11px]", open.online ? "text-green-600 dark:text-green-400" : "text-ink/45 dark:text-cream/45")}>
-                  {open.online ? "Active now" : "Offline"}
+                <p className={cn("text-[11px]", open.online? "text-green-600 dark:text-green-400": "text-ink/45 dark:text-cream/45")}>
+                  {open.online? "Active now": "Offline"}
                 </p>
               </div>
             </div>
@@ -952,7 +954,7 @@ function ChatsTab({ me }: { me: CommunityData["me"] }) {
               {messages.map((m, i) => {
                 const prevSame = i > 0 && messages[i - 1].mine === m.mine;
                 return (
-                  <div key={m.id} className={cn("flex", m.mine ? "justify-end" : "justify-start", prevSame && "mt-0.5")}>
+                  <div key={m.id} className={cn("flex", m.mine? "justify-end": "justify-start", prevSame && "mt-0.5")}>
                     <div
                       className={cn(
                         "max-w-[80%] rounded-2xl px-3.5 py-2 text-[13.5px] leading-snug",
@@ -965,9 +967,9 @@ function ChatsTab({ me }: { me: CommunityData["me"] }) {
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={m.image} alt="Attached" className="mb-1.5 max-h-48 rounded-xl object-cover" loading="lazy" />
                       )}
-                      {m.content ? <p className="whitespace-pre-wrap break-words">{m.content}</p> : null}
+                      {m.content? <p className="whitespace-pre-wrap break-words">{m.content}</p>: null}
                       {!prevSame && (
-                        <p className={cn("mt-0.5 flex items-center justify-end gap-1 text-[10px]", m.mine ? "text-ink/55" : "text-ink/40 dark:text-cream/40")}>
+                        <p className={cn("mt-0.5 flex items-center justify-end gap-1 text-[10px]", m.mine? "text-ink/55": "text-ink/40 dark:text-cream/40")}>
                           {timeAgo(m.createdAt)}
                           {m.mine && (
                             m.read
@@ -1031,15 +1033,15 @@ function ChatsTab({ me }: { me: CommunityData["me"] }) {
                 placeholder={`Message ${open.name}…`}
                 maxLength={1000}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
+                  if (e.key === "Enter" &&!e.shiftKey) {
                     e.preventDefault();
                     send();
                   }
                 }}
                 className="h-10"
               />
-              <Button onClick={send} disabled={sending || (!draft.trim() && !chatImage)} className="shrink-0">
-                {sending ? <Spinner className="h-4 w-4 border-ink/30 border-t-ink" /> : <Send size={15} />}
+              <Button onClick={send} disabled={sending || (!draft.trim() &&!chatImage)} className="shrink-0">
+                {sending? <Spinner className="h-4 w-4 border-ink/30 border-t-ink" />: <Send size={15} />}
               </Button>
             </div>
           </>
@@ -1080,7 +1082,7 @@ function Composer({
     setImgBusy(true);
     const reader = new FileReader();
     reader.onload = () => {
-      setImage(String(reader.result ?? ""));
+      setImage(String(reader.result?? ""));
       setImgBusy(false);
     };
     reader.onerror = () => {
@@ -1097,13 +1099,13 @@ function Composer({
     const res = await createPostAction(body, image);
     setBusy(false);
     if (!res.ok) {
-      toast(res.error ?? "Could not post", "error");
+      toast(res.error?? "Could not post", "error");
       onError(res.error);
       return;
     }
     setText("");
     setImage(null);
-    toast("Posted to the community 🎉");
+    toast("Posted to the community ");
     await onPosted();
   };
 
@@ -1114,7 +1116,7 @@ function Composer({
         <div className="min-w-0">
           <p className="truncate text-sm font-bold text-ink dark:text-cream">{me.name}</p>
           <p className="text-[12px] text-ink/50 dark:text-cream/50">
-            {me.isAdmin ? "Posting as admin" : "Share with the community"}
+            {me.isAdmin? "Posting as admin": "Share with the community"}
           </p>
         </div>
       </div>
@@ -1152,16 +1154,16 @@ function Composer({
           />
           <button
             onClick={() => fileRef.current?.click()}
-            disabled={imgBusy || !!image}
+            disabled={imgBusy ||!!image}
             className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-semibold text-ink/60 transition hover:bg-ink/5 active:scale-95 disabled:opacity-50 dark:text-cream/60 dark:hover:bg-cream/10"
           >
-            {imgBusy ? <Spinner className="h-4 w-4" /> : <ImagePlus size={16} />}
+            {imgBusy? <Spinner className="h-4 w-4" />: <ImagePlus size={16} />}
             Photo
           </button>
           <span className="text-[11px] text-ink/40 dark:text-cream/40">{text.length}/2000</span>
         </div>
-        <Button onClick={submit} disabled={busy || imgBusy || !text.trim()}>
-          {busy ? <Spinner className="border-ink/30 border-t-ink" /> : <Send size={15} />}
+        <Button onClick={submit} disabled={busy || imgBusy ||!text.trim()}>
+          {busy? <Spinner className="border-ink/30 border-t-ink" />: <Send size={15} />}
           Post
         </Button>
       </div>
@@ -1203,7 +1205,7 @@ function PostCard({
     setPickerOpen(false);
     const res = await reactToPostAction({ postId: post.id, emoji });
     if (!res.ok) {
-      toast(res.error ?? "Could not react", "error");
+      toast(res.error?? "Could not react", "error");
       onError(res.error);
       return;
     }
@@ -1217,7 +1219,7 @@ function PostCard({
     const res = await addCommentAction({ postId: post.id, content: body });
     setBusy(false);
     if (!res.ok) {
-      toast(res.error ?? "Could not comment", "error");
+      toast(res.error?? "Could not comment", "error");
       onError(res.error);
       return;
     }
@@ -1231,7 +1233,7 @@ function PostCard({
     const res = await deletePostAction(post.id);
     setBusy(false);
     if (!res.ok) {
-      toast(res.error ?? "Could not delete", "error");
+      toast(res.error?? "Could not delete", "error");
       return;
     }
     toast("Post deleted");
@@ -1241,17 +1243,17 @@ function PostCard({
   const togglePin = async () => {
     const res = await togglePinPostAction(post.id);
     if (!res.ok) {
-      toast(res.error ?? "Could not pin", "error");
+      toast(res.error?? "Could not pin", "error");
       return;
     }
-    toast(res.pinned ? "Pinned as announcement 📌" : "Unpinned");
+    toast(res.pinned? "Pinned as announcement ": "Unpinned");
     await onChanged();
   };
 
   const removeComment = async (commentId: string) => {
     const res = await deleteCommentAction(commentId);
     if (!res.ok) {
-      toast(res.error ?? "Could not delete comment", "error");
+      toast(res.error?? "Could not delete comment", "error");
       return;
     }
     await onChanged();
@@ -1287,10 +1289,10 @@ function PostCard({
           {me.isAdmin && (
             <button
               onClick={togglePin}
-              title={post.pinned ? "Unpin" : "Pin as announcement"}
+              title={post.pinned? "Unpin": "Pin as announcement"}
               className={cn(
                 "rounded-full p-1.5 transition hover:bg-ink/5 dark:hover:bg-cream/10",
-                post.pinned ? "text-brand-600 dark:text-brand-400" : "text-ink/35 dark:text-cream/35"
+                post.pinned? "text-brand-600 dark:text-brand-400": "text-ink/35 dark:text-cream/35"
               )}
             >
               <Pin size={15} />
@@ -1357,7 +1359,7 @@ function PostCard({
       <div className="flex items-center gap-1 border-t border-ink/8 pt-2 dark:border-cream/10">
         <div className="relative">
           <button
-            onClick={() => setPickerOpen((v) => !v)}
+            onClick={() => setPickerOpen((v) =>!v)}
             disabled={!canParticipate}
             className={cn(
               "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-semibold transition",
@@ -1367,7 +1369,7 @@ function PostCard({
               !canParticipate && "cursor-not-allowed opacity-50"
             )}
           >
-            {post.myReaction ? <span className="text-base leading-none">{post.myReaction}</span> : <Smile size={16} />}
+            {post.myReaction? <span className="text-base leading-none">{post.myReaction}</span>: <Smile size={16} />}
             React
           </button>
           {pickerOpen && (
@@ -1391,11 +1393,11 @@ function PostCard({
           )}
         </div>
         <button
-          onClick={() => setShowComments((v) => !v)}
+          onClick={() => setShowComments((v) =>!v)}
           className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-semibold text-ink/60 transition hover:bg-ink/5 dark:text-cream/60 dark:hover:bg-cream/10"
         >
           <MessageCircle size={16} />
-          {post.comments.length > 0 ? `${post.comments.length} comment${post.comments.length === 1 ? "" : "s"}` : "Comment"}
+          {post.comments.length > 0? `${post.comments.length} comment${post.comments.length === 1? "": "s"}`: "Comment"}
         </button>
       </div>
 
@@ -1444,15 +1446,15 @@ function PostCard({
                 placeholder="Write a comment…"
                 maxLength={1000}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
+                  if (e.key === "Enter" &&!e.shiftKey) {
                     e.preventDefault();
                     submitComment();
                   }
                 }}
                 className="h-10"
               />
-              <Button size="sm" variant="soft" onClick={submitComment} disabled={busy || !commentText.trim()}>
-                {busy ? <Spinner className="h-4 w-4" /> : <Send size={14} />}
+              <Button size="sm" variant="soft" onClick={submitComment} disabled={busy ||!commentText.trim()}>
+                {busy? <Spinner className="h-4 w-4" />: <Send size={14} />}
               </Button>
             </div>
           )}
@@ -1484,11 +1486,11 @@ function FriendsSidebar({
     const res = await respondFriendRequestAction({ requesterId, accept });
     setBusyId(null);
     if (!res.ok) {
-      toast(res.error ?? "Could not respond", "error");
+      toast(res.error?? "Could not respond", "error");
       onError(res.error);
       return;
     }
-    toast(accept ? "Friend added 🤝" : "Request declined");
+    toast(accept? "Friend added ": "Request declined");
     await onChanged();
   };
 
@@ -1497,11 +1499,11 @@ function FriendsSidebar({
     const res = await sendFriendRequestAction(person.id);
     setBusyId(null);
     if (!res.ok) {
-      toast(res.error ?? "Could not send request", "error");
+      toast(res.error?? "Could not send request", "error");
       onError(res.error);
       return;
     }
-    toast(res.status === "friends" ? "Friend added 🤝" : "Friend request sent");
+    toast(res.status === "friends"? "Friend added ": "Friend request sent");
     await onChanged();
   };
 
@@ -1510,7 +1512,7 @@ function FriendsSidebar({
     const res = await removeFriendAction(personId);
     setBusyId(null);
     if (!res.ok) {
-      toast(res.error ?? "Could not update", "error");
+      toast(res.error?? "Could not update", "error");
       return;
     }
     await onChanged();
@@ -1557,7 +1559,7 @@ function FriendsSidebar({
                   title="Accept"
                   className="grid h-8 w-8 place-items-center rounded-full bg-brand-500 text-ink transition hover:bg-brand-400 active:scale-95"
                 >
-                  {busyId === req.id ? <Loader2 size={14} className="animate-spin" /> : <Check size={15} />}
+                  {busyId === req.id? <Loader2 size={14} className="animate-spin" />: <Check size={15} />}
                 </button>
                 <button
                   onClick={() => respond(req.id, false)}
@@ -1578,11 +1580,11 @@ function FriendsSidebar({
         <h3 className="text-[13px] font-bold uppercase tracking-wide text-ink/50 dark:text-cream/50">
           Friends ({data.friends.length})
         </h3>
-        {data.friends.length === 0 ? (
+        {data.friends.length === 0? (
           <p className="text-[13px] text-ink/50 dark:text-cream/50">
             No friends yet — add people from the discover list below.
           </p>
-        ) : (
+        ): (
           data.friends.map((f) => (
             <button
               key={f.id}
@@ -1592,8 +1594,8 @@ function FriendsSidebar({
               <PresenceAvatar person={f} size={36} />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[13px] font-bold text-ink dark:text-cream">{f.name}</p>
-                <p className={cn("text-[11px]", f.online ? "text-green-600 dark:text-green-400" : "text-ink/45 dark:text-cream/45")}>
-                  {f.online ? "Active now" : "Offline"}
+                <p className={cn("text-[11px]", f.online? "text-green-600 dark:text-green-400": "text-ink/45 dark:text-cream/45")}>
+                  {f.online? "Active now": "Offline"}
                 </p>
               </div>
               {f.isAdmin && <Shield size={13} className="shrink-0 text-violet-500" />}
@@ -1614,18 +1616,18 @@ function FriendsSidebar({
             className="h-9 pl-9"
           />
         </div>
-        {filteredPeople.length === 0 ? (
+        {filteredPeople.length === 0? (
           <p className="text-[13px] text-ink/50 dark:text-cream/50">
-            {q ? "No members match that search." : "You've connected with everyone here!"}
+            {q? "No members match that search.": "You've connected with everyone here!"}
           </p>
-        ) : (
+        ): (
           filteredPeople.map((p) => (
             <div key={p.id} className="flex items-center gap-2.5">
               <PresenceAvatar person={p} size={36} onClick={() => onOpenProfile(p.id)} />
               <button onClick={() => onOpenProfile(p.id)} className="min-w-0 flex-1 text-left">
                 <p className="truncate text-[13px] font-bold text-ink hover:underline dark:text-cream">{p.name}</p>
                 <p className="text-[11px] capitalize text-ink/45 dark:text-cream/45">
-                  {p.isAdmin ? "Admin" : p.role ?? "Member"}
+                  {p.isAdmin? "Admin": p.role?? "Member"}
                 </p>
               </button>
               <PersonAction person={p} busy={busyId === p.id} onAdd={() => addFriend(p)} onCancel={() => cancelOrRemove(p.id)} onAccept={() => respond(p.id, true)} />
@@ -1735,7 +1737,7 @@ function ProfilePreviewModal({
     const res = await fn();
     setBusy(false);
     if (!res.ok) {
-      toast(res.error ?? "Something went wrong", "error");
+      toast(res.error?? "Something went wrong", "error");
       return;
     }
     if (okMsg) toast(okMsg);
@@ -1755,11 +1757,11 @@ function ProfilePreviewModal({
           <X size={16} />
         </button>
 
-        {loading || !preview ? (
+        {loading ||!preview? (
           <div className="grid h-64 place-items-center">
             <Spinner className="h-6 w-6" />
           </div>
-        ) : (
+        ): (
           <>
             {/* Banner */}
             <div className={cn("h-24 bg-gradient-to-br", bannerClass(preview.banner))} />
@@ -1784,9 +1786,9 @@ function ProfilePreviewModal({
                 )}
               </div>
               <p className="mt-0.5 text-[13px] font-medium text-ink/50 dark:text-cream/50">
-                {preview.online ? (
+                {preview.online? (
                   <span className="text-green-600 dark:text-green-400">● Active now</span>
-                ) : (
+                ): (
                   "● Offline"
                 )}
               </p>
@@ -1801,18 +1803,18 @@ function ProfilePreviewModal({
               <div className="mt-3 space-y-1.5 text-[13px] text-ink/70 dark:text-cream/70">
                 {(preview.course || preview.yearLevel) && (
                   <p className="flex items-center gap-1.5">
-                    <span className="text-ink/40 dark:text-cream/40">🎓</span>
+                    <GraduationCap size={14} className="text-ink/40 dark:text-cream/40" />
                     {[preview.course, preview.yearLevel].filter(Boolean).join(" · ")}
                   </p>
                 )}
                 {preview.institution && (
                   <p className="flex items-center gap-1.5">
-                    <span className="text-ink/40 dark:text-cream/40">🏫</span>
+                    <School size={14} className="text-ink/40 dark:text-cream/40" />
                     {preview.institution}
                   </p>
                 )}
                 <p className="flex items-center gap-1.5">
-                  <span className="text-ink/40 dark:text-cream/40">📅</span>
+                  <CalendarDays size={14} className="text-ink/40 dark:text-cream/40" />
                   Joined {new Date(preview.memberSince).toLocaleDateString(undefined, { month: "long", year: "numeric" })}
                 </p>
               </div>
@@ -1830,7 +1832,7 @@ function ProfilePreviewModal({
               </div>
 
               {/* Admin moderation */}
-              {preview.viewerIsAdmin && !preview.isSelf && (
+              {preview.viewerIsAdmin &&!preview.isSelf && (
                 <div className="mt-4 space-y-2 rounded-2xl border border-violet-500/20 bg-violet-50/50 p-3 dark:bg-violet-500/10">
                   <p className="flex items-center gap-1.5 text-[12px] font-bold uppercase tracking-wide text-violet-700 dark:text-violet-300">
                     <Shield size={12} /> Admin controls
@@ -1840,9 +1842,9 @@ function ProfilePreviewModal({
                       size="sm"
                       variant="outline"
                       disabled={busy}
-                      onClick={() => act(() => setUserMutedAction({ userId: preview.id, muted: !preview.muted }), preview.muted ? "Member unmuted" : "Member muted")}
+                      onClick={() => act(() => setUserMutedAction({ userId: preview.id, muted:!preview.muted }), preview.muted? "Member unmuted": "Member muted")}
                     >
-                      <VolumeX size={14} /> {preview.muted ? "Unmute" : "Mute"}
+                      <VolumeX size={14} /> {preview.muted? "Unmute": "Mute"}
                     </Button>
                     {!preview.isAdmin && (
                       <Button
@@ -1867,13 +1869,13 @@ function ProfilePreviewModal({
               )}
             </div>
             <ConfirmDialog
-              open={ask !== null}
+              open={ask!== null}
               title={
                 ask?.kind === "promote"
-                  ? `Promote ${ask?.name ?? "this member"} to admin?`
+                  ? `Promote ${ask?.name?? "this member"} to admin?`
                   : ask?.kind === "remove"
-                    ? `Remove ${ask?.name ?? "this member"}?`
-                    : `Remove ${ask?.name ?? "this friend"}?`
+                    ? `Remove ${ask?.name?? "this member"}?`
+                    : `Remove ${ask?.name?? "this friend"}?`
               }
               message={
                 ask?.kind === "promote"
@@ -1882,15 +1884,15 @@ function ProfilePreviewModal({
                     ? "This deletes all their posts, comments and reactions, and mutes them. This can't be undone."
                     : "You won't see each other in friends anymore. You can add them back later."
               }
-              confirmLabel={ask?.kind === "promote" ? "Promote" : "Remove"}
-              danger={ask?.kind !== "promote"}
+              confirmLabel={ask?.kind === "promote"? "Promote": "Remove"}
+              danger={ask?.kind!== "promote"}
               busy={busy}
               onCancel={() => setAsk(null)}
               onConfirm={() => {
-                if (!preview || !ask) return;
+                if (!preview ||!ask) return;
                 if (ask.kind === "promote") {
                   setAsk(null);
-                  act(() => promoteToAdminAction(preview.id), "Promoted to admin 👑");
+                  act(() => promoteToAdminAction(preview.id), "Promoted to admin ");
                 } else if (ask.kind === "remove") {
                   setAsk(null);
                   act(() => removeMemberAction(preview.id), "Member removed");
@@ -1954,7 +1956,7 @@ function FriendActionButton({
       <Button
         size="sm"
         disabled={busy}
-        onClick={() => act(() => respondFriendRequestAction({ requesterId: preview.id, accept: true }), "Friend added 🤝")}
+        onClick={() => act(() => respondFriendRequestAction({ requesterId: preview.id, accept: true }), "Friend added ")}
       >
         <Check size={14} /> Accept
       </Button>

@@ -52,8 +52,13 @@ const MAX_PAGE_CHARS = 3200;
 const QUESTION_TYPE_OPTIONS = [
   "mcq",
   "true_false",
+  "modified_true_false",
+  "identification",
   "short",
+  "essay",
   "enumeration",
+  "ordering",
+  "multiple_response",
   "fill_blank",
   "matching",
 ] as const;
@@ -85,7 +90,7 @@ export default function NewKitPage() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    getSessionInfo().then((info) => setIsGuest(info?.isGuest ?? false));
+    getSessionInfo().then((info) => setIsGuest(info?.isGuest?? false));
   }, []);
 
   // Is AI vision configured? If so we can read diagrams/figures in PDFs and
@@ -117,8 +122,8 @@ export default function NewKitPage() {
 
   const dataUrlToBlob = (dataUrl: string): Blob => {
     const [head, b64] = dataUrl.split(",");
-    const mime = /data:(.*?);base64/.exec(head)?.[1] ?? "image/png";
-    const bin = atob(b64 ?? "");
+    const mime = /data:(.*?);base64/.exec(head)?.[1]?? "image/png";
+    const bin = atob(b64?? "");
     const arr = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
     return new Blob([arr], { type: mime });
@@ -178,7 +183,7 @@ export default function NewKitPage() {
           try {
             const imgPages = await renderPdfImagePages(file, { maxPages: 6 });
             if (imgPages.length) {
-              toast(`Reading ${imgPages.length} image/diagram page${imgPages.length > 1 ? "s" : ""} with AI…`);
+              toast(`Reading ${imgPages.length} image/diagram page${imgPages.length > 1? "s": ""} with AI…`);
               const extra = await visionReadPages(imgPages);
               if (extra.trim()) text = `${text}\n\n${extra}`.trim();
             }
@@ -196,10 +201,10 @@ export default function NewKitPage() {
             form.append("mode", "full");
             const res = await fetch("/api/vision", { method: "POST", body: form });
             const data = await res.json();
-            if (data?.ok && (data.text?.length ?? 0) > 40) {
+            if (data?.ok && (data.text?.length?? 0) > 40) {
               setOcrBusy(false);
               addSource(file.name + " (AI vision)", data.text);
-              toast("Image read with AI vision ✨");
+              toast("Image read with AI vision ");
               setExtracting(false);
               return;
             }
@@ -267,7 +272,7 @@ export default function NewKitPage() {
       const res = await fetch("/api/ocr", { method: "POST", body: form });
       const data = await res.json();
       if (!data.ok) {
-        toast(data.error ?? "OCR failed.", "error");
+        toast(data.error?? "OCR failed.", "error");
         return;
       }
       addSource(`${ocrFile.name} (OCR)`, data.text as string);
@@ -285,12 +290,12 @@ export default function NewKitPage() {
     const res = await fetchUrlAction(url.trim());
     setExtracting(false);
     if (!res.ok) {
-      toast(res.error ?? "Could not fetch this link", "error");
+      toast(res.error?? "Could not fetch this link", "error");
       return;
     }
-    addSource(res.title ?? "Web content", res.text ?? "", res.transcript === false);
+    addSource(res.title?? "Web content", res.text?? "", res.transcript === false);
     if (res.transcript === false) {
-      toast("⚠️ No transcript found — paste it manually for full-quality kits.", "error");
+      toast(" No transcript found — paste it manually for full-quality kits.", "error");
     }
     setUrl("");
   };
@@ -316,7 +321,7 @@ export default function NewKitPage() {
     }
     setCardCount(Math.min(40, Math.max(6, detectedTerms)));
     setQuestionCount(Math.min(30, Math.max(6, detectedTerms)));
-    toast(`Counts set from ${detectedTerms} detected terms ✨`);
+    toast(`Counts set from ${detectedTerms} detected terms `);
   };
 
   const generate = async () => {
@@ -338,7 +343,7 @@ export default function NewKitPage() {
     });
     if (!res.ok) {
       setGenerating(false);
-      toast(res.error ?? "Could not generate the kit", "error");
+      toast(res.error?? "Could not generate the kit", "error");
       return;
     }
     router.push(`/kits/${res.id}`);
@@ -376,7 +381,7 @@ export default function NewKitPage() {
       {isGuest && (
         <Card className="mb-5 border-amber-400/50 bg-amber-50 dark:bg-amber-500/10">
           <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">
-            👀 Guest preview only —{" "}
+             Guest preview only —{" "}
             <button onClick={() => router.push("/signin")} className="font-bold underline underline-offset-2">
               create a free account
             </button>{" "}
@@ -417,7 +422,7 @@ export default function NewKitPage() {
                 : "border-ink/10 bg-surface hover:border-ink/25 dark:border-cream/15 dark:bg-surface-dark dark:hover:border-cream/40"
             )}
           >
-            <Icon size={20} className={cn("mx-auto mb-1.5", mode === m ? "text-ink dark:text-brand-300" : "text-ink/50 dark:text-cream/50")} />
+            <Icon size={20} className={cn("mx-auto mb-1.5", mode === m? "text-ink dark:text-brand-300": "text-ink/50 dark:text-cream/50")} />
             <span className="text-[13px] font-bold text-ink dark:text-cream">{label}</span>
           </button>
         ))}
@@ -433,7 +438,7 @@ export default function NewKitPage() {
             onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
           />
           <div
-            onClick={() => !extracting && fileRef.current?.click()}
+            onClick={() =>!extracting && fileRef.current?.click()}
             onDragOver={(e) => {
               e.preventDefault();
               setDragOver(true);
@@ -443,19 +448,19 @@ export default function NewKitPage() {
               e.preventDefault();
               setDragOver(false);
               const f = e.dataTransfer.files?.[0];
-              if (f && !extracting) handleFile(f);
+              if (f &&!extracting) handleFile(f);
             }}
             className={cn(
               "cursor-pointer rounded-2xl border-2 border-dashed p-10 text-center transition",
-              dragOver ? "border-brand-500 bg-brand-50 dark:bg-brand-500/10" : "border-ink/15 hover:border-brand-500 dark:border-cream/20"
+              dragOver? "border-brand-500 bg-brand-50 dark:bg-brand-500/10": "border-ink/15 hover:border-brand-500 dark:border-cream/20"
             )}
           >
-            {extracting ? (
+            {extracting? (
               <>
                 <Spinner className="mx-auto h-6 w-6" />
                 <p className="mt-3 text-sm font-semibold text-ink/60 dark:text-cream/60">Reading your file…</p>
               </>
-            ) : (
+            ): (
               <>
                 <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-brand-500 text-ink">
                   <UploadCloud size={26} />
@@ -463,24 +468,24 @@ export default function NewKitPage() {
                 <p className="mt-4 text-[15px] font-bold text-ink dark:text-cream">Click the cloud or drop your file</p>
                 <p className="mt-1 text-[13px] text-ink/50 dark:text-cream/50">
                   PDF, images, TXT, MD, CSV · up to 80 pages ·{" "}
-                  {visionOn ? "AI reads diagrams, figures & images in your PDFs" : "scanned PDFs use OCR"}
+                  {visionOn? "AI reads diagrams, figures & images in your PDFs": "scanned PDFs use OCR"}
                 </p>
               </>
             )}
           </div>
 
-          {ocrFile && !extracting && (
+          {ocrFile &&!extracting && (
             <div className="mt-4 rounded-2xl border border-brand-500/50 bg-brand-50 p-4 dark:bg-brand-500/10">
               <p className="text-sm font-bold text-ink dark:text-cream">
-                📷 “{ocrFile.name}” looks scanned — no selectable text found.
+                 “{ocrFile.name}” looks scanned — no selectable text found.
               </p>
               <p className="mt-1 text-[13px] text-ink/60 dark:text-cream/60">
                 Run OCR to extract the exact text, then generate your kit from it.
               </p>
               <div className="mt-3 flex gap-2">
                 <Button onClick={scanWithOcr} disabled={ocrBusy}>
-                  {ocrBusy ? <Spinner className="border-ink/30 border-t-ink" /> : <Sparkles size={15} />}
-                  {ocrBusy ? "Scanning…" : "Scan with OCR"}
+                  {ocrBusy? <Spinner className="border-ink/30 border-t-ink" />: <Sparkles size={15} />}
+                  {ocrBusy? "Scanning…": "Scan with OCR"}
                 </Button>
                 <Button variant="ghost" onClick={() => setOcrFile(null)} disabled={ocrBusy}>
                   Dismiss
@@ -494,8 +499,8 @@ export default function NewKitPage() {
               <div className="mb-1.5 flex items-center justify-between">
                 <Label2>How many pages of material?</Label2>
                 <span className="text-sm font-bold text-brand-700 dark:text-brand-400">
-                  {pages} page{pages > 1 ? "s" : ""}
-                  {pdfPages > 0 ? ` (PDF has ${pdfPages})` : ""}
+                  {pages} page{pages > 1? "s": ""}
+                  {pdfPages > 0? ` (PDF has ${pdfPages})`: ""}
                 </span>
               </div>
               <input
@@ -521,8 +526,8 @@ export default function NewKitPage() {
           <Field label="YouTube or web link" hint="YouTube: we'll grab the title. For best results paste the transcript too — or add any article/blog page.">
             <div className="flex gap-2">
               <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://youtube.com/watch?v=… or any article URL" onKeyDown={(e) => e.key === "Enter" && fetchLink()} />
-              <Button onClick={fetchLink} disabled={extracting || !url.trim()}>
-                {extracting ? <Spinner className="border-ink/30 border-t-ink" /> : "Fetch"}
+              <Button onClick={fetchLink} disabled={extracting ||!url.trim()}>
+                {extracting? <Spinner className="border-ink/30 border-t-ink" />: "Fetch"}
               </Button>
             </div>
           </Field>
@@ -569,7 +574,7 @@ export default function NewKitPage() {
           <div className="space-y-2.5">
             {sources.some((s) => s.noTranscript) && (
               <div className="rounded-2xl border border-amber-400/50 bg-amber-50 p-3.5 text-[13px] font-semibold text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
-                ⚠️ One or more links had no transcript — switch to “Paste notes”, paste the transcript, and
+                 One or more links had no transcript — switch to “Paste notes”, paste the transcript, and
                 remove the weak source for full-quality flashcards and questions.
               </div>
             )}
@@ -601,7 +606,7 @@ export default function NewKitPage() {
                     Review & edit
                   </button>
                   <button
-                    onClick={() => setSources((arr) => arr.filter((_, j) => j !== i))}
+                    onClick={() => setSources((arr) => arr.filter((_, j) => j!== i))}
                     className="rounded-full p-2 text-ink/40 transition hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-500/10"
                     aria-label="Remove source"
                   >
@@ -632,9 +637,9 @@ export default function NewKitPage() {
                               toast("Keep at least a few sentences of material.", "error");
                               return;
                             }
-                            setSources((arr) => arr.map((x, j) => (j === i ? { ...x, text: editDraft.trim() } : x)));
+                            setSources((arr) => arr.map((x, j) => (j === i? {...x, text: editDraft.trim() }: x)));
                             setEditing(null);
-                            toast("Material updated ✨");
+                            toast("Material updated ");
                           }}
                         >
                           <Check size={14} /> Save text
@@ -668,7 +673,7 @@ export default function NewKitPage() {
           </div>
           <p className="mb-4 text-xs text-ink/55 dark:text-cream/55">
             Card & question volume follows the term→definition pairs in your material
-            {detectedTerms ? ` (detected ~${detectedTerms})` : " — add material to detect terms"}.
+            {detectedTerms? ` (detected ~${detectedTerms})`: " — add material to detect terms"}.
           </p>
           <div className="grid gap-5 sm:grid-cols-2">
             <Field label={`Flashcards: ${cardCount}`}>
@@ -698,12 +703,12 @@ export default function NewKitPage() {
               <button
                 onClick={() =>
                   setQuestionTypes((t) =>
-                    t.length === QUESTION_TYPE_OPTIONS.length ? ["mcq"] : [...QUESTION_TYPE_OPTIONS]
+                    t.length === QUESTION_TYPE_OPTIONS.length? ["mcq"]: [...QUESTION_TYPE_OPTIONS]
                   )
                 }
                 className="text-xs font-bold text-brand-700 hover:underline dark:text-brand-400"
               >
-                {questionTypes.length === QUESTION_TYPE_OPTIONS.length ? "Clear" : "Select all"}
+                {questionTypes.length === QUESTION_TYPE_OPTIONS.length? "Clear": "Select all"}
               </button>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -713,7 +718,7 @@ export default function NewKitPage() {
                   <button
                     key={v}
                     onClick={() =>
-                      setQuestionTypes((t) => (on ? t.filter((x) => x !== v) : [...t, v]))
+                      setQuestionTypes((t) => (on? t.filter((x) => x!== v): [...t, v]))
                     }
                     className={cn(
                       "rounded-full border px-3.5 py-1.5 text-[13px] font-bold transition",
@@ -728,8 +733,8 @@ export default function NewKitPage() {
               })}
             </div>
             <p className="mt-2 text-xs text-ink/45 dark:text-cream/45">
-              Enumeration, fill-in-the-blank and matching are great for memorising terms, definitions
-              and lists. All on by default.
+              Identification, enumeration, ordering, fill-in-the-blank and matching are best for
+              memorising exact terms, definitions and lists. All on by default.
             </p>
           </div>
         </Card>

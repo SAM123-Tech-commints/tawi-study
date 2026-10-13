@@ -167,17 +167,27 @@ export const cards = pgTable("cards", {
 
 /** Practice-question formats. The DB stores this as free `text`, so new
  *  formats need no migration.
- *  - mcq          4 options, one correct
- *  - true_false   answer is "True" | "False"
- *  - short        one-sentence typed answer
- *  - enumeration  list every item of a set; `options` holds the correct items
- *  - fill_blank   sentence with a "_____"; `answer` fills it, `options` may be a word bank
- *  - matching     `options` holds "Term :: meaning" pairs to pair up */
+ *  - mcq               4 options, one correct
+ *  - true_false        answer is "True" | "False"
+ *  - modified_true_false  statement to judge; `options[0]` is the correction when false
+ *  - identification    name the term from its meaning; `answer` is the term
+ *  - short             one-sentence typed answer
+ *  - essay             long answer; graded on coverage of the model answer's key points
+ *  - enumeration       list every item of a set; `options` holds the correct items
+ *  - ordering          arrange the items in the correct sequence; `options` is that sequence
+ *  - multiple_response several correct choices; `options` all choices, `answer` the correct ones joined by " | "
+ *  - fill_blank        sentence with a "_____"; `answer` fills it, `options` may be a word bank
+ *  - matching          `options` holds "Term :: meaning" pairs to pair up */
 export type QuestionType =
   | "mcq"
   | "true_false"
+  | "modified_true_false"
+  | "identification"
   | "short"
+  | "essay"
   | "enumeration"
+  | "ordering"
+  | "multiple_response"
   | "fill_blank"
   | "matching";
 export interface GenQuestion {

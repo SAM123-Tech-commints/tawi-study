@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Check, Highlighter, Plus, Sparkles, X } from "lucide-react";
+import { Bot, Check, Highlighter, Plus, Sparkles, X } from "lucide-react";
 import { extractTerms, keyTerms, splitSentences } from "@/lib/text";
 import { Button, Card, cn, Input } from "@/components/ui";
 
@@ -156,19 +156,67 @@ export function TermPicker({
 
   const selectedCount = selected.size;
 
+  const selectAll = () => setSelected(new Set(all.map((c) => keyOf(c.term))));
+  const selectKeyTerms = () => {
+    const s = new Set<string>();
+    for (const c of all) if (c.bold || c.definition.length > 12) s.add(keyOf(c.term));
+    setSelected(s);
+  };
+  const clearAll = () => setSelected(new Set());
+
   return (
     <Card className="mt-5">
-      <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
-        <h3 className="font-bold text-ink dark:text-cream">Confirm your key terms</h3>
+      <div className="mb-4 flex items-start gap-3">
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-2xl bg-brand-500 text-ink">
+          <Bot size={17} />
+        </span>
+        <div className="min-w-0 flex-1 rounded-2xl rounded-tl-sm bg-ink/4 p-3.5 dark:bg-cream/5">
+          <p className="text-sm font-semibold text-ink dark:text-cream">
+            I read your material and found <strong>{all.length}</strong> key term
+            {all.length === 1 ? "" : "s"}
+            {all.length > 0 && (
+              <>
+                {" "}
+                — <strong>{selectedCount}</strong> selected for flashcards
+              </>
+            )}
+            .
+          </p>
+          <p className="mt-1 text-[12.5px] leading-relaxed text-ink/55 dark:text-cream/55">
+            {all.length === 0
+              ? "Add your own terms below, or paste a little more material."
+              : "Are these okay? Bold words in your file are the strongest signals. Use them all, or keep only the strongest (bold + clearly defined)."}
+          </p>
+          {all.length > 0 && (
+            <div className="mt-2.5 flex flex-wrap gap-1.5">
+              <button
+                onClick={selectAll}
+                className="rounded-full bg-brand-500 px-3 py-1 text-xs font-bold text-ink transition hover:bg-brand-400"
+              >
+                Use all {all.length}
+              </button>
+              <button
+                onClick={selectKeyTerms}
+                className="rounded-full border border-ink/15 px-3 py-1 text-xs font-bold text-ink transition hover:border-brand-500 dark:border-cream/20 dark:text-cream"
+              >
+                Key terms only
+              </button>
+              <button
+                onClick={clearAll}
+                className="rounded-full border border-ink/15 px-3 py-1 text-xs font-bold text-ink/60 transition hover:border-ink/30 dark:border-cream/20 dark:text-cream/60"
+              >
+                Clear
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-bold text-ink dark:text-cream">Detected terms</h3>
         <span className="text-xs font-bold text-brand-700 dark:text-brand-400">
           {selectedCount} selected
         </span>
       </div>
-      <p className="mb-4 text-xs text-ink/55 dark:text-cream/55">
-        Tawi read your material and marked the likely key terms — <strong>bold</strong> words in your
-        file are pre-checked. Tick the ones you want as flashcards, or add your own by typing or
-        highlighting the text below.
-      </p>
 
       {/* Candidate checkboxes */}
       <div className="max-h-72 space-y-1.5 overflow-auto pr-1">

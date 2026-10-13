@@ -29,7 +29,7 @@ export default function AdminPage() {
   const load = useCallback(async () => {
     setLoading(true);
     const [info, d] = await Promise.all([getSessionInfo(), getAdminData()]);
-    setIsAdmin(info?.isAdmin ?? false);
+    setIsAdmin(info?.isAdmin?? false);
     setData(d);
     setLoading(false);
   }, []);
@@ -44,11 +44,11 @@ export default function AdminPage() {
     const res = await claimAdminAction(code.trim());
     setUnlocking(false);
     if (res.ok) {
-      toast("Admin unlocked — all Pro features enabled 👑");
+      toast("Admin unlocked — all Pro features enabled ");
       setCode("");
       load();
     } else {
-      toast(res.error ?? "Could not unlock admin", "error");
+      toast(res.error?? "Could not unlock admin", "error");
     }
   };
 
@@ -60,7 +60,7 @@ export default function AdminPage() {
     );
   }
 
-  if (!isAdmin || !data) {
+  if (!isAdmin ||!data) {
     return (
       <div className="mx-auto max-w-md py-10">
         <button
@@ -88,8 +88,8 @@ export default function AdminPage() {
                 onKeyDown={(e) => e.key === "Enter" && unlock()}
               />
             </Field>
-            <Button className="mt-3 w-full" onClick={unlock} disabled={unlocking || !code.trim()}>
-              {unlocking ? <Spinner className="border-ink/30 border-t-ink" /> : <ShieldCheck size={15} />}
+            <Button className="mt-3 w-full" onClick={unlock} disabled={unlocking ||!code.trim()}>
+              {unlocking? <Spinner className="border-ink/30 border-t-ink" />: <ShieldCheck size={15} />}
               Unlock admin
             </Button>
           </div>
@@ -121,7 +121,7 @@ export default function AdminPage() {
             <ShieldCheck size={26} /> Admin panel
           </h1>
           <p className="mt-1 text-[15px] text-ink/60 dark:text-cream/60">
-            Platform usage at a glance · AI engine: {data.aiEnabled ? "online ✨" : "offline"}
+            Platform usage at a glance · AI engine: {data.aiEnabled? "online ": "offline"}
           </p>
         </div>
         <Badge tone="brand">
@@ -158,7 +158,7 @@ export default function AdminPage() {
                   <td className="max-w-[220px] truncate px-4 py-2.5 text-ink/60 dark:text-cream/60">{u.email}</td>
                   <td className="px-4 py-2.5">
                     <span className="mr-1 rounded-full bg-ink/5 px-2 py-0.5 text-[11px] font-bold text-ink/70 dark:bg-cream/10 dark:text-cream/70">
-                      {u.isGuest ? "Guest" : u.role ?? "—"}
+                      {u.isGuest? "Guest": u.role?? "—"}
                     </span>
                     {u.isAdmin && (
                       <span className="rounded-full bg-brand-500 px-2 py-0.5 text-[11px] font-bold text-ink">

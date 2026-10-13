@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, GraduationCap } from "lucide-react";
 import { googleSigninAction, guestSigninAction, signinAction, signupAction } from "@/lib/actions";
 import { Button, Field, Input, Spinner, useToast } from "@/components/ui";
 import { OwlLogo } from "@/components/logo";
@@ -46,6 +46,7 @@ function SigninInner() {
   const [stage, setStage] = useState(0);
   const [error, setError] = useState("");
   const [googleId, setGoogleId] = useState<string | null>(null);
+  const [googleErr, setGoogleErr] = useState<string | null>(null);
   const submitted = useRef(false);
   const googleBtnRef = useRef<HTMLDivElement>(null);
   const { dark } = useTheme();
@@ -95,7 +96,7 @@ function SigninInner() {
         setError(res.error ?? "Something went wrong.");
         return;
       }
-      toast(mode === "up" ? "Account created — welcome! 🎉" : "Welcome back!");
+      toast(mode === "up" ? "Account created — welcome!" : "Welcome back!");
       goNext(res.role);
     } finally {
       setLoading(false);
@@ -136,6 +137,7 @@ function SigninInner() {
   useEffect(() => {
     if (!googleId) return;
     let cancelled = false;
+    setGoogleErr(null);
 
     const handleCredential = async (resp: { credential?: string }) => {
       if (!resp.credential || submitted.current) return;
@@ -148,7 +150,7 @@ function SigninInner() {
           setError(res.error ?? "Google sign-in failed. Please try again.");
           return;
         }
-        toast("Signed in with Google — welcome! 🎉");
+        toast("Signed in with Google — welcome!");
         goNext(res.role);
       } catch {
         setError("Google sign-in failed. Please try again.");
@@ -159,26 +161,34 @@ function SigninInner() {
     };
 
     const render = () => {
-      if (cancelled || !window.google?.accounts?.id || !googleBtnRef.current) return;
-      window.google.accounts.id.initialize({
-        client_id: googleId,
-        callback: handleCredential,
-        auto_select: false,
-        use_fedcm_for_prompt: true,
-        cancel_on_tap_outside: true,
-      });
-      const el = googleBtnRef.current;
-      el.innerHTML = "";
-      const width = Math.min(400, Math.max(240, el.offsetWidth || 360));
-      window.google.accounts.id.renderButton(el, {
-        type: "standard",
-        theme: dark ? "filled_black" : "outline",
-        size: "large",
-        text: "continue_with",
-        shape: "pill",
-        logo_alignment: "center",
-        width,
-      });
+      if (cancelled || !googleBtnRef.current) return;
+      if (!window.google?.accounts?.id) {
+        setGoogleErr("Could not load Google sign-in. Your browser or an extension may be blocking it.");
+        return;
+      }
+      try {
+        window.google.accounts.id.initialize({
+          client_id: googleId,
+          callback: handleCredential,
+          auto_select: false,
+          use_fedcm_for_prompt: true,
+          cancel_on_tap_outside: true,
+        });
+        const el = googleBtnRef.current;
+        el.innerHTML = "";
+        const width = Math.min(400, Math.max(240, el.offsetWidth || 360));
+        window.google.accounts.id.renderButton(el, {
+          type: "standard",
+          theme: dark ? "filled_black" : "outline",
+          size: "large",
+          text: "continue_with",
+          shape: "pill",
+          logo_alignment: "center",
+          width,
+        });
+      } catch {
+        setGoogleErr("Google sign-in could not start. Please try again.");
+      }
     };
 
     if (window.google?.accounts?.id) {
@@ -194,11 +204,23 @@ function SigninInner() {
       s.async = true;
       s.defer = true;
       s.dataset.gsi = "1";
+      s.onerror = () =>
+        setGoogleErr("Could not load Google sign-in. Check your connection or an ad-blocker.");
       document.head.appendChild(s);
     }
     s.addEventListener("load", render);
+    // If the script loads but the button never appears — almost always a missing
+    // "Authorized JavaScript origin" on the Google Cloud OAuth client — say so.
+    const t = window.setTimeout(() => {
+      if (!cancelled && googleBtnRef.current && googleBtnRef.current.childElementCount === 0) {
+        setGoogleErr(
+          `Google sign-in didn't appear. Add ${window.location.origin} under “Authorized JavaScript origins” for this OAuth client in Google Cloud Console.`
+        );
+      }
+    }, 6000);
     return () => {
       cancelled = true;
+      window.clearTimeout(t);
       s?.removeEventListener("load", render);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -331,7 +353,9 @@ function SigninInner() {
         </div>
 
         <div className="mt-6 flex items-center justify-center gap-3 animate-in">
-          <span className="grid h-11 w-11 animate-float place-items-center rounded-full bg-brand-500 text-xl">🎓</span>
+          <span className="grid h-11 w-11 animate-float place-items-center rounded-full bg-brand-500 text-ink">
+            <GraduationCap size={20} />
+          </span>
           <p className="max-w-[260px] text-xs leading-relaxed text-ink/50 dark:text-cream/50">
             “Upload once, study forever.” No credit card required · Free for students
           </p>

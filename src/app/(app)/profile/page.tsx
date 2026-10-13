@@ -15,11 +15,14 @@ import {
   KeyRound,
   LogOut,
   Megaphone,
+  Monitor,
+  Moon,
   Pencil,
   RefreshCw,
   Shield,
   Settings2,
   Sparkles,
+  Sun,
   Trash2,
   User,
   Users,
@@ -108,14 +111,14 @@ export default function ProfilePage() {
     }
     setName(profile.name);
     setEmail(profile.email);
-    setRole(profile.role ?? "student");
-    setInstitution(profile.institution ?? "");
-    setBio(profile.bio ?? "");
-    setCourse(profile.course ?? "");
-    setYearLevel(profile.yearLevel ?? "");
-    setBanner(profile.banner ?? "lime");
+    setRole(profile.role?? "student");
+    setInstitution(profile.institution?? "");
+    setBio(profile.bio?? "");
+    setCourse(profile.course?? "");
+    setYearLevel(profile.yearLevel?? "");
+    setBanner(profile.banner?? "lime");
     setAppearOffline(profile.appearOffline);
-    setAvatar(av ?? profile.avatar);
+    setAvatar(av?? profile.avatar);
     setCreatedAt(profile.createdAt);
     if (statsRes) setStats(statsRes);
     if (settings) {
@@ -129,14 +132,14 @@ export default function ProfilePage() {
         : "system";
       setTheme(t);
       setMode(t);
-      setAccent(settings.accent ?? "lime");
-      applyAccent(settings.accent ?? "lime");
-      setFontSize(settings.fontSize ?? "medium");
+      setAccent(settings.accent?? "lime");
+      applyAccent(settings.accent?? "lime");
+      setFontSize(settings.fontSize?? "medium");
       setCompactMode(settings.compactMode);
       setSoundEnabled(settings.soundEnabled);
       setAutoGenerate(settings.autoGenerate);
     }
-    if (keyRes.ok) setApiKey(keyRes.key ?? null);
+    if (keyRes.ok) setApiKey(keyRes.key?? null);
     setLoading(false);
   }, [router, setMode]);
 
@@ -158,9 +161,9 @@ export default function ProfilePage() {
     });
     setSaving(false);
     if (res.ok) {
-      toast("Profile updated ✨");
+      toast("Profile updated ");
       router.refresh();
-    } else toast(res.error ?? "Could not save", "error");
+    } else toast(res.error?? "Could not save", "error");
   };
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -180,7 +183,7 @@ export default function ProfilePage() {
         setAvatar(dataUrl);
         toast("Profile picture updated");
         router.refresh();
-      } else toast(res.error ?? "Could not upload", "error");
+      } else toast(res.error?? "Could not upload", "error");
     };
     reader.readAsDataURL(file);
   };
@@ -213,15 +216,15 @@ export default function ProfilePage() {
     });
     setSaving(false);
     if (res.ok) toast("Settings saved");
-    else toast(res.error ?? "Could not save", "error");
+    else toast(res.error?? "Could not save", "error");
   };
 
   const changePassword = async () => {
-    if (!currentPassword || !newPassword) {
+    if (!currentPassword ||!newPassword) {
       toast("Fill in both password fields.", "error");
       return;
     }
-    if (newPassword !== confirmPassword) {
+    if (newPassword!== confirmPassword) {
       toast("New passwords don't match.", "error");
       return;
     }
@@ -238,7 +241,7 @@ export default function ProfilePage() {
       setNewPassword("");
       setConfirmPassword("");
     } else {
-      toast(res.error ?? "Could not change password", "error");
+      toast(res.error?? "Could not change password", "error");
     }
   };
 
@@ -248,8 +251,8 @@ export default function ProfilePage() {
     setKeyBusy(false);
     if (res.ok && res.key) {
       setApiKey(res.key);
-      toast("New collaboration key generated 🔑");
-    } else toast(res.error ?? "Could not generate key", "error");
+      toast("New collaboration key generated ");
+    } else toast(res.error?? "Could not generate key", "error");
   };
 
   const revokeKey = async () => {
@@ -259,7 +262,7 @@ export default function ProfilePage() {
     if (res.ok) {
       setApiKey(null);
       toast("Collaboration key revoked");
-    } else toast(res.error ?? "Could not revoke key", "error");
+    } else toast(res.error?? "Could not revoke key", "error");
   };
 
   const copyKey = async () => {
@@ -269,7 +272,7 @@ export default function ProfilePage() {
     } catch {
       /* clipboard unavailable */
     }
-    toast("Key copied — share it with collaborators 🤝");
+    toast("Key copied — share it with collaborators ");
   };
 
   const signOut = async () => {
@@ -302,13 +305,13 @@ export default function ProfilePage() {
       <Card className="space-y-4 p-6">
         <div className="flex items-center gap-5">
           <div className="relative">
-            {avatar ? (
+            {avatar? (
               <img
                 src={avatar}
                 alt="Profile"
                 className="h-20 w-20 rounded-full object-cover ring-2 ring-ink/10 dark:ring-cream/15"
               />
-            ) : (
+            ): (
               <Avatar name={name || email} size={80} />
             )}
             {uploadingAvatar && (
@@ -354,10 +357,10 @@ export default function ProfilePage() {
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           {(
             [
-              { icon: BookOpen, label: "Kits", count: stats?.kits ?? 0 },
-              { icon: FileText, label: "Cards", count: stats?.cards ?? 0 },
-              { icon: ClipboardList, label: "Assignments", count: stats?.assignments ?? 0 },
-              { icon: Megaphone, label: "Posts", count: stats?.posts ?? 0 },
+              { icon: BookOpen, label: "Kits", count: stats?.kits?? 0 },
+              { icon: FileText, label: "Cards", count: stats?.cards?? 0 },
+              { icon: ClipboardList, label: "Assignments", count: stats?.assignments?? 0 },
+              { icon: Megaphone, label: "Posts", count: stats?.posts?? 0 },
             ] as const
           ).map((item) => (
             <div key={item.label} className="rounded-2xl bg-ink/4 p-4 text-center dark:bg-cream/5">
@@ -408,7 +411,7 @@ export default function ProfilePage() {
           />
         </Field>
         <Button onClick={saveAccount} disabled={saving || name.trim().length < 2}>
-          {saving ? <Spinner className="border-ink/30 border-t-ink" /> : <Check size={15} />} Save profile
+          {saving? <Spinner className="border-ink/30 border-t-ink" />: <Check size={15} />} Save profile
         </Button>
       </Card>
 
@@ -423,11 +426,11 @@ export default function ProfilePage() {
 
         {/* Live preview */}
         <div>
-          <div className={cn("h-20 rounded-2xl bg-gradient-to-br", BANNER_GRADIENTS[banner] ?? BANNER_GRADIENTS.lime)} />
+          <div className={cn("h-20 rounded-2xl bg-gradient-to-br", BANNER_GRADIENTS[banner]?? BANNER_GRADIENTS.lime)} />
           <div className="-mt-8 ml-5 mb-1 inline-block rounded-full ring-4 ring-surface dark:ring-surface-dark">
-            {avatar ? (
+            {avatar? (
               <img src={avatar} alt="" className="h-16 w-16 rounded-full object-cover" />
-            ) : (
+            ): (
               <Avatar name={name || email} size={64} />
             )}
           </div>
@@ -487,24 +490,24 @@ export default function ProfilePage() {
             </p>
           </div>
           <button
-            onClick={() => setAppearOffline((v) => !v)}
+            onClick={() => setAppearOffline((v) =>!v)}
             className={cn(
               "relative h-7 w-12 shrink-0 rounded-full transition",
-              appearOffline ? "bg-brand-500" : "bg-ink/15 dark:bg-cream/20"
+              appearOffline? "bg-brand-500": "bg-ink/15 dark:bg-cream/20"
             )}
             aria-label="Toggle appear offline"
           >
             <span
               className={cn(
                 "absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-all",
-                appearOffline ? "left-6" : "left-1"
+                appearOffline? "left-6": "left-1"
               )}
             />
           </button>
         </div>
 
         <Button onClick={saveAccount} disabled={saving || name.trim().length < 2}>
-          {saving ? <Spinner className="border-ink/30 border-t-ink" /> : <Check size={15} />} Save profile
+          {saving? <Spinner className="border-ink/30 border-t-ink" />: <Check size={15} />} Save profile
         </Button>
       </Card>
 
@@ -520,17 +523,17 @@ export default function ProfilePage() {
           <Field label="Current password">
             <div className="relative">
               <Input
-                type={showCurrentPw ? "text" : "password"}
+                type={showCurrentPw? "text": "password"}
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
                 placeholder="Enter current password"
               />
               <button
                 type="button"
-                onClick={() => setShowCurrentPw((v) => !v)}
+                onClick={() => setShowCurrentPw((v) =>!v)}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-ink/40 hover:text-ink/60 dark:text-cream/40 dark:hover:text-cream/60"
               >
-                {showCurrentPw ? <EyeOff size={16} /> : <Eye size={16} />}
+                {showCurrentPw? <EyeOff size={16} />: <Eye size={16} />}
               </button>
             </div>
           </Field>
@@ -538,17 +541,17 @@ export default function ProfilePage() {
             <Field label="New password">
               <div className="relative">
                 <Input
-                  type={showNewPw ? "text" : "password"}
+                  type={showNewPw? "text": "password"}
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   placeholder="Min. 8 characters"
                 />
                 <button
                   type="button"
-                  onClick={() => setShowNewPw((v) => !v)}
+                  onClick={() => setShowNewPw((v) =>!v)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-ink/40 hover:text-ink/60 dark:text-cream/40 dark:hover:text-cream/60"
                 >
-                  {showNewPw ? <EyeOff size={16} /> : <Eye size={16} />}
+                  {showNewPw? <EyeOff size={16} />: <Eye size={16} />}
                 </button>
               </div>
             </Field>
@@ -565,9 +568,9 @@ export default function ProfilePage() {
             variant="outline"
             size="sm"
             onClick={changePassword}
-            disabled={pwBusy || !currentPassword || !newPassword || !confirmPassword}
+            disabled={pwBusy ||!currentPassword ||!newPassword ||!confirmPassword}
           >
-            {pwBusy ? <Spinner className="h-4 w-4" /> : <KeyRound size={14} />} Change password
+            {pwBusy? <Spinner className="h-4 w-4" />: <KeyRound size={14} />} Change password
           </Button>
         </div>
       </Card>
@@ -589,7 +592,7 @@ export default function ProfilePage() {
                     : "bg-ink/5 text-ink/60 hover:bg-ink/10 dark:bg-cream/10 dark:text-cream/60"
                 }`}
               >
-                {s === "small" ? "Small" : s === "medium" ? "Medium" : "Large"}
+                {s === "small"? "Small": s === "medium"? "Medium": "Large"}
               </button>
             ))}
           </div>
@@ -601,17 +604,17 @@ export default function ProfilePage() {
             <p className="text-xs text-ink/55 dark:text-cream/55">Reduce spacing and padding for a denser layout.</p>
           </div>
           <button
-            onClick={() => setCompactMode((v) => !v)}
+            onClick={() => setCompactMode((v) =>!v)}
             className={cn(
               "relative h-7 w-12 shrink-0 rounded-full transition",
-              compactMode ? "bg-brand-500" : "bg-ink/15 dark:bg-cream/20"
+              compactMode? "bg-brand-500": "bg-ink/15 dark:bg-cream/20"
             )}
             aria-label="Toggle compact mode"
           >
             <span
               className={cn(
                 "absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-all",
-                compactMode ? "left-6" : "left-1"
+                compactMode? "left-6": "left-1"
               )}
             />
           </button>
@@ -620,22 +623,22 @@ export default function ProfilePage() {
         <div className="flex items-center justify-between gap-3 rounded-2xl bg-ink/4 p-3.5 dark:bg-cream/5">
           <div>
             <p className="flex items-center gap-1.5 text-sm font-bold text-ink dark:text-cream">
-              {soundEnabled ? <Volume2 size={14} /> : <VolumeX size={14} />} Sound effects
+              {soundEnabled? <Volume2 size={14} />: <VolumeX size={14} />} Sound effects
             </p>
             <p className="text-xs text-ink/55 dark:text-cream/55">Play sounds for timer alerts and notifications.</p>
           </div>
           <button
-            onClick={() => setSoundEnabled((v) => !v)}
+            onClick={() => setSoundEnabled((v) =>!v)}
             className={cn(
               "relative h-7 w-12 shrink-0 rounded-full transition",
-              soundEnabled ? "bg-brand-500" : "bg-ink/15 dark:bg-cream/20"
+              soundEnabled? "bg-brand-500": "bg-ink/15 dark:bg-cream/20"
             )}
             aria-label="Toggle sound effects"
           >
             <span
               className={cn(
                 "absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-all",
-                soundEnabled ? "left-6" : "left-1"
+                soundEnabled? "left-6": "left-1"
               )}
             />
           </button>
@@ -647,24 +650,24 @@ export default function ProfilePage() {
             <p className="text-xs text-ink/55 dark:text-cream/55">Automatically generate flashcards and questions when uploading materials.</p>
           </div>
           <button
-            onClick={() => setAutoGenerate((v) => !v)}
+            onClick={() => setAutoGenerate((v) =>!v)}
             className={cn(
               "relative h-7 w-12 shrink-0 rounded-full transition",
-              autoGenerate ? "bg-brand-500" : "bg-ink/15 dark:bg-cream/20"
+              autoGenerate? "bg-brand-500": "bg-ink/15 dark:bg-cream/20"
             )}
             aria-label="Toggle auto-generate"
           >
             <span
               className={cn(
                 "absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-all",
-                autoGenerate ? "left-6" : "left-1"
+                autoGenerate? "left-6": "left-1"
               )}
             />
           </button>
         </div>
 
         <Button onClick={saveSettings} disabled={saving} variant="outline">
-          {saving ? <Spinner className="h-4 w-4" /> : <Check size={15} />} Save customization
+          {saving? <Spinner className="h-4 w-4" />: <Check size={15} />} Save customization
         </Button>
       </Card>
 
@@ -681,12 +684,12 @@ export default function ProfilePage() {
             </p>
           </div>
           <button
-            onClick={() => setTimerEnabled((v) => !v)}
-            className={`relative h-7 w-12 shrink-0 rounded-full transition ${timerEnabled ? "bg-brand-500" : "bg-ink/15 dark:bg-cream/20"}`}
+            onClick={() => setTimerEnabled((v) =>!v)}
+            className={`relative h-7 w-12 shrink-0 rounded-full transition ${timerEnabled? "bg-brand-500": "bg-ink/15 dark:bg-cream/20"}`}
             aria-label="Toggle timer popup"
           >
             <span
-              className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-all ${timerEnabled ? "left-6" : "left-1"}`}
+              className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-all ${timerEnabled? "left-6": "left-1"}`}
             />
           </button>
         </div>
@@ -709,23 +712,23 @@ export default function ProfilePage() {
         <Field label="Theme">
           <div className="flex gap-2">
             {([
-              ["light", "☀️ Light"],
-              ["dark", "🌙 Dark"],
-              ["system", "💻 System"],
-            ] as const).map(([t, label]) => (
+              ["light", Sun, "Light"],
+              ["dark", Moon, "Dark"],
+              ["system", Monitor, "System"],
+            ] as const).map(([t, Icon, label]) => (
               <button
                 key={t}
                 onClick={() => {
                   setTheme(t);
                   setMode(t);
                 }}
-                className={`rounded-full px-4 py-2 text-sm font-bold transition active:scale-95 ${
+                className={`inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-bold transition active:scale-95 ${
                   theme === t
                     ? "bg-brand-500 text-ink"
                     : "bg-ink/5 text-ink/60 hover:bg-ink/10 dark:bg-cream/10 dark:text-cream/60"
                 }`}
               >
-                {label}
+                <Icon size={14} /> {label}
               </button>
             ))}
           </div>
@@ -742,7 +745,7 @@ export default function ProfilePage() {
                 title={a.label}
                 aria-label={`${a.label} accent`}
                 className={`grid h-11 w-11 place-items-center rounded-full transition hover:scale-110 active:scale-90 ${
-                  accent === a.id ? "ring-2 ring-ink ring-offset-2 dark:ring-cream dark:ring-offset-surface-dark" : "ring-1 ring-ink/10 dark:ring-cream/15"
+                  accent === a.id? "ring-2 ring-ink ring-offset-2 dark:ring-cream dark:ring-offset-surface-dark": "ring-1 ring-ink/10 dark:ring-cream/15"
                 }`}
                 style={{ background: a.swatch }}
               >
@@ -752,7 +755,7 @@ export default function ProfilePage() {
           </div>
         </Field>
         <Button onClick={saveSettings} disabled={saving} variant="outline">
-          {saving ? <Spinner className="h-4 w-4" /> : <Check size={15} />} Save settings
+          {saving? <Spinner className="h-4 w-4" />: <Check size={15} />} Save settings
         </Button>
       </Card>
 
@@ -767,21 +770,21 @@ export default function ProfilePage() {
           <code className="rounded bg-ink/5 px-1 dark:bg-cream/10">{"{ key }"}</code>). Regenerating
           invalidates the old key instantly.
         </p>
-        {apiKey ? (
+        {apiKey? (
           <div className="flex gap-2">
             <Input value={apiKey} readOnly className="font-mono text-xs" onFocus={(e) => e.target.select()} />
             <Button variant="outline" size="sm" onClick={copyKey}>
               <Copy size={14} /> Copy
             </Button>
           </div>
-        ) : (
+        ): (
           <p className="rounded-xl bg-ink/4 p-3 text-[13px] text-ink/55 dark:bg-cream/5 dark:text-cream/55">
             No key yet — generate one to start collaborating.
           </p>
         )}
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={regenKey} disabled={keyBusy}>
-            <RefreshCw size={14} /> {apiKey ? "Regenerate" : "Generate"} key
+            <RefreshCw size={14} /> {apiKey? "Regenerate": "Generate"} key
           </Button>
           {apiKey && (
             <Button variant="ghost" size="sm" onClick={revokeKey} disabled={keyBusy} className="text-red-500">

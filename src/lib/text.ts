@@ -483,7 +483,18 @@ export function makeCardsLocal(text: string, count: number): TermDef[] {
 /* ---------------------------- questions --------------------------- */
 
 export interface LocalQuestion {
-  type: "mcq" | "true_false" | "short" | "enumeration" | "fill_blank" | "matching";
+  type:
+    | "mcq"
+    | "true_false"
+    | "modified_true_false"
+    | "identification"
+    | "short"
+    | "essay"
+    | "enumeration"
+    | "ordering"
+    | "multiple_response"
+    | "fill_blank"
+    | "matching";
   question: string;
   options: string[];
   answer: string;
@@ -574,6 +585,17 @@ function shortPrompt(term: string): string {
   if (NUMBER_WORDS.has(subject.split(/\s+/)[0].toLowerCase())) subject = `the ${subject}`;
   return `Explain ${subject} in your own words.`;
 }
+
+/** Essay version of the short prompt — asks for depth rather than a one-liner. */
+function essayPrompt(term: string): string {
+  const isProper = /^[A-Z]{2,}\b/.test(term) || /^[A-Z][a-z]+[A-Z]/.test(term) || /\s[A-Z]/.test(term);
+  let subject = isProper ? term : term[0].toLowerCase() + term.slice(1);
+  if (NUMBER_WORDS.has(subject.split(/\s+/)[0].toLowerCase())) subject = `the ${subject}`;
+  return `In a short essay, explain ${subject}. Cover its definition, how it works, and why it matters.`;
+}
+
+const lc = (s: string) => s.trim().toLowerCase();
+const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 
 /** Shorten a definition to a clean, one-line meaning for matching questions. */
 function trimMeaning(d: string): string {
@@ -677,7 +699,9 @@ export function makeQuestionsLocal(
 
   const out: LocalQuestion[] = [];
   const used = new Set<string>();
-  const allowed = types.length ? types : ["mcq", "true_false", "short"];
+  const allowed = types.length
+    ? types
+    : ["mcq", "true_false", "identification", "fill_blank", "short"];
   let tIdx = 0;
   let sIdx = 0;
   let guard = 0;
@@ -738,9 +762,89 @@ export function makeQuestionsLocal(
       continue;
     }
 
+    if (type === "identification") {
+      if (!matchPairs.length) continue;
+      const t = matchPairs[Math.floor(Math.random() * matchPairs.length)];
+      const q = `Identify the exact term that matches this meaning: ${trimMeaning(t.definition)}`;
+      if (!used.has(q)) {
+        used.add(q);
+        out.push({
+          type: "identification",
+          question: q,
+          options: [],
+          answer: t.term,
+          explanation: `${t.term} — ${trimMeaning(t.definition)}`,
+        });
+      }
+      continue;
+    }
+
+    if (type === "essay") {
+      if (!matchPairs.length) continue;
+      const t = matchPairs[Math.floor(Math.random() * matchPairs.length)];
+      const q = essayPrompt(t.term);
+      if (!used.has(q)) {
+        used.add(q);
+        out.push({
+          type: "essay",
+          question: q,
+          options: [],
+          answer: t.definition,
+          explanation: t.definition,
+        });
+      }
+      continue;
+    }
+
+    if (type === "ordering") {
+      if (!enums.length) continue;
+      const e = enums[Math.floor(Math.random() * enums.length)];
+      if (e.items.length < 3) continue;
+      const key = `order:${e.prompt.toLowerCase()}`;
+      if (used.has(key)) continue;
+      used.add(key);
+      out.push({
+        type: "ordering",
+        question: `Arrange the following in the correct order — ${e.prompt}.`,
+        options: e.items,
+        answer: e.items.join(" | "),
+        explanation: `${cap(e.prompt)}: ${e.items.join(" → ")}.`,
+      });
+      continue;
+    }
+
+    if (type === "multiple_response") {
+      if (!enums.length) continue;
+      const e = enums[Math.floor(Math.random() * enums.length)];
+      if (e.items.length < 2) continue;
+      const correct = e.items;
+      const pool = [...new Set([...matchPairs.map((t) => t.term), ...distractorPool])].filter(
+        (x) => !correct.some((c) => lc(c) === lc(x))
+      );
+      const wrong = shuffle(pool).slice(0, Math.min(3, pool.length));
+      if (wrong.length < 2) continue;
+      const key = `mr:${e.prompt.toLowerCase()}`;
+      if (used.has(key)) continue;
+      used.add(key);
+      out.push({
+        type: "multiple_response",
+        question: `Select ALL that apply — ${e.prompt}.`,
+        options: shuffle([...correct, ...wrong]),
+        answer: correct.join(" | "),
+        explanation: `Correct: ${correct.join(", ")}.`,
+      });
+      continue;
+    }
+
     // Only the sentence-based formats fall through. Anything else the material
     // can't support is skipped — never silently mislabelled as multiple choice.
-    if (type !== "mcq" && type !== "true_false" && type !== "fill_blank") continue;
+    if (
+      type !== "mcq" &&
+      type !== "true_false" &&
+      type !== "modified_true_false" &&
+      type !== "fill_blank"
+    )
+      continue;
 
     const s = sents[sIdx % Math.max(1, sents.length)];
     sIdx++;
@@ -759,6 +863,32 @@ export function makeQuestionsLocal(
         answer: blank,
         explanation: s,
       });
+    } else if (type === "modified_true_false") {
+      const falseSentence = makeFalse(s);
+      if (falseSentence && Math.random() < 0.6) {
+        const q = `Modified True or False: ${falseSentence}`;
+        if (!used.has(q)) {
+          used.add(q);
+          out.push({
+            type: "modified_true_false",
+            question: q,
+            options: [s],
+            answer: "False",
+            explanation: `False. The correct statement is: ${s}`,
+          });
+        }
+      } else {
+        const q = `Modified True or False: ${s}`;
+        if (used.has(q)) continue;
+        used.add(q);
+        out.push({
+          type: "modified_true_false",
+          question: q,
+          options: [],
+          answer: "True",
+          explanation: s,
+        });
+      }
     } else if (type === "true_false") {
       const falseSentence = makeFalse(s);
       if (falseSentence && Math.random() < 0.55) {
