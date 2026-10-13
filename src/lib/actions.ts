@@ -36,6 +36,7 @@ import {
   generateNotes,
   generateQuestions,
   generateSummary,
+  type SummaryDraft,
 } from "@/lib/ai";
 import {
   clearSession,
@@ -172,7 +173,9 @@ export async function signinAction(form: FormData): Promise<{ ok: boolean; error
     if (!EMAIL_RE.test(email)) return { ok: false, error: "Please enter a valid email address." };
     const rows = await db.select().from(users).where(eq(users.email, email)).limit(1);
     const user = rows[0];
-    if (!user?.passwordHash) return { ok: false, error: "No account found with this email." };
+    if (!user) return { ok: false, error: "No account found with this email. Create one above." };
+    if (!user.passwordHash)
+      return { ok: false, error: "This account uses Google sign-in. Use “Continue with Google” below." };
     const valid = await verifyPassword(password, user.passwordHash);
     if (!valid) return { ok: false, error: "Incorrect password. Please try again." };
     await syncAdminFlag(user.id, email);
@@ -522,7 +525,29 @@ export async function getUserSettings(): Promise<{
 
 /* ============================ KIT GENERATION =========================== */
 
-async function buildKitContent(content: string, cardCount: number, questionCount: number) {
+/** Every practice format we can generate. "include all possible" is the
+ *  default when the student doesn't narrow it down. */
+const ALL_QUESTION_TYPES = [
+  "mcq",
+  "true_false",
+  "short",
+  "enumeration",
+  "fill_blank",
+  "matching",
+] as const;
+
+function cleanTypes(types?: string[]): string[] {
+  const allow = new Set<string>(ALL_QUESTION_TYPES);
+  const picked = (types ?? []).filter((t) => allow.has(t));
+  return picked.length ? picked : [...ALL_QUESTION_TYPES];
+}
+
+async function buildKitContent(
+  content: string,
+  cardCount: number,
+  questionCount: number,
+  types?: string[]
+) {
   // Question/card volume is driven by how many term→definition pairs the
   // material actually contains — a 5-term handout should not produce 30 cards.
   let terms = 0;
@@ -537,11 +562,75 @@ async function buildKitContent(content: string, cardCount: number, questionCount
   const cardsDrafts = await generateCards(content, Math.max(6, cardsN));
   const questionsDrafts = await generateQuestions(content, {
     count: Math.max(6, questionsN),
-    types: ["mcq", "true_false", "short"],
+    types: cleanTypes(types),
   });
   const summary = await generateSummary(content);
   const notes = await generateNotes(content);
   return { cardsDrafts, questionsDrafts, summary, notes };
+}
+
+export interface ConfirmedTerm {
+  term: string;
+  definition: string;
+}
+
+/** First sentence of the material that mentions a term — gives a student-added
+ *  term an EXACT-text definition instead of an invented one. */
+function defFromContent(content: string, term: string): string {
+  const t = term.toLowerCase();
+  const sentences = content.split(/(?<=[.!?])\s+/);
+  const hit = sentences.find(
+    (s) => s.toLowerCase().includes(t) && s.trim().length > term.length + 10 && s.length < 400
+  );
+  return hit ? hit.replace(/\s+/g, " ").trim() : "";
+}
+
+/** Merge student-confirmed terms into a generated card set: their picks come
+ *  first (guaranteed to appear), then generated cards fill the rest, deduped. */
+function withConfirmedTerms(
+  content: string,
+  generated: { term: string; definition: string }[],
+  terms: ConfirmedTerm[] | undefined
+): { term: string; definition: string }[] {
+  const picks = (terms ?? [])
+    .map((t) => ({ term: (t.term ?? "").trim(), definition: (t.definition ?? "").trim() }))
+    .filter((t) => t.term.length > 1);
+  if (!picks.length) return generated;
+
+  const seen = new Set<string>();
+  const out: { term: string; definition: string }[] = [];
+  for (const p of picks) {
+    const k = p.term.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    const def = p.definition || defFromContent(content, p.term);
+    out.push({
+      term: p.term,
+      definition: def || `${p.term} — a key term to review in your study guide.`,
+    });
+  }
+  for (const c of generated) {
+    const k = c.term.trim().toLowerCase();
+    if (!k || seen.has(k)) continue;
+    seen.add(k);
+    out.push(c);
+  }
+  return out.slice(0, 80);
+}
+
+/** Add confirmed terms to the AI summary's key-term list so the study guide
+ *  highlights the keyword AND its meaning by default. */
+function highlightConfirmedTerms(
+  summary: SummaryDraft,
+  terms: ConfirmedTerm[] | undefined
+): SummaryDraft {
+  const picks = (terms ?? []).filter((t) => t.term?.trim() && t.definition?.trim());
+  if (!picks.length) return summary;
+  const existing = new Set((summary.keyTerms ?? []).map((k) => k.term.toLowerCase()));
+  const extra = picks
+    .filter((p) => !existing.has(p.term.trim().toLowerCase()))
+    .map((p) => ({ term: p.term.trim(), meaning: p.definition.trim() }));
+  return { ...summary, keyTerms: [...extra, ...(summary.keyTerms ?? [])].slice(0, 40) };
 }
 
 export async function createKitAction(opts: {
@@ -551,6 +640,8 @@ export async function createKitAction(opts: {
   classId?: string | null;
   cardCount?: number;
   questionCount?: number;
+  questionTypes?: string[];
+  terms?: ConfirmedTerm[];
 }): Promise<{ ok: boolean; error?: string; id?: string }> {
   return guard(async () => {
     const user = await getUser();
@@ -563,8 +654,12 @@ export async function createKitAction(opts: {
     const generated = await buildKitContent(
       content.slice(0, 200000),
       opts.cardCount ?? 14,
-      opts.questionCount ?? 12
+      opts.questionCount ?? 12,
+      opts.questionTypes
     );
+    // Student-confirmed terms are guaranteed as flashcards and highlighted in
+    // the study guide; AI-generated cards fill in the rest.
+    const finalCards = withConfirmedTerms(content, generated.cardsDrafts, opts.terms);
     const [kit] = await db
       .insert(kits)
       .values({
@@ -573,16 +668,16 @@ export async function createKitAction(opts: {
         sourceName: opts.sourceName ?? "",
         content,
         classId: opts.classId ?? null,
-        summary: generated.summary,
+        summary: highlightConfirmedTerms(generated.summary, opts.terms),
         notes: generated.notes,
         aiEnabled: aiAvailable(),
         shareToken: token(),
       })
       .returning();
 
-    if (generated.cardsDrafts.length) {
+    if (finalCards.length) {
       await db.insert(cards).values(
-        generated.cardsDrafts.map((c, i) => ({
+        finalCards.map((c, i) => ({
           kitId: kit.id,
           term: c.term,
           definition: c.definition,
@@ -610,7 +705,8 @@ export async function createKitAction(opts: {
 }
 
 export async function regenerateKitAction(
-  kitId: string
+  kitId: string,
+  opts?: { questionTypes?: string[] }
 ): Promise<{ ok: boolean; error?: string }> {
   return guard(async () => {
     const user = await getUser();
@@ -623,7 +719,12 @@ export async function regenerateKitAction(
       .limit(1);
     if (!kit) return { ok: false, error: "Study kit not found." };
 
-    const generated = await buildKitContent(kit.content.slice(0, 200000), 14, 12);
+    const generated = await buildKitContent(
+      kit.content.slice(0, 200000),
+      14,
+      12,
+      opts?.questionTypes
+    );
     await db.delete(cards).where(eq(cards.kitId, kit.id));
     await db.delete(kitQuestions).where(eq(kitQuestions.kitId, kit.id));
     await db
@@ -812,7 +913,15 @@ export async function deleteCardAction(cardId: string): Promise<{ ok: boolean; e
     const user = await getUser();
     const blocked = memberBlocked(user);
     if (blocked) return { ok: false, error: blocked };
-    await db.delete(cards).where(eq(cards.id, cardId));
+    // Only delete a card that belongs to a kit this user owns.
+    const [owned] = await db
+      .select({ id: cards.id })
+      .from(cards)
+      .innerJoin(kits, eq(cards.kitId, kits.id))
+      .where(and(eq(cards.id, cardId), eq(kits.userId, user!.id)))
+      .limit(1);
+    if (!owned) return { ok: false, error: "Flashcard not found." };
+    await db.delete(cards).where(eq(cards.id, owned.id));
     return { ok: true };
   });
 }
@@ -822,7 +931,15 @@ export async function deleteKitQuestionAction(questionId: string): Promise<{ ok:
     const user = await getUser();
     const blocked = memberBlocked(user);
     if (blocked) return { ok: false, error: blocked };
-    await db.delete(kitQuestions).where(eq(kitQuestions.id, questionId));
+    // Only delete a question that belongs to a kit this user owns.
+    const [owned] = await db
+      .select({ id: kitQuestions.id })
+      .from(kitQuestions)
+      .innerJoin(kits, eq(kitQuestions.kitId, kits.id))
+      .where(and(eq(kitQuestions.id, questionId), eq(kits.userId, user!.id)))
+      .limit(1);
+    if (!owned) return { ok: false, error: "Question not found." };
+    await db.delete(kitQuestions).where(eq(kitQuestions.id, owned.id));
     return { ok: true };
   });
 }
@@ -1158,9 +1275,20 @@ export async function generateAssignmentQuestionsAction(opts: {
   }, { created: 0 });
 }
 
-export async function deleteAssignmentQuestionAction(questionId: string): Promise<{ ok: boolean }> {
+export async function deleteAssignmentQuestionAction(questionId: string): Promise<{ ok: boolean; error?: string }> {
   return guard(async () => {
-    await db.delete(assignmentQuestions).where(eq(assignmentQuestions.id, questionId));
+    const user = await getUser();
+    const blocked = memberBlocked(user);
+    if (blocked) return { ok: false, error: blocked };
+    // Only delete a question that belongs to an assignment this user owns.
+    const [owned] = await db
+      .select({ id: assignmentQuestions.id })
+      .from(assignmentQuestions)
+      .innerJoin(assignments, eq(assignmentQuestions.assignmentId, assignments.id))
+      .where(and(eq(assignmentQuestions.id, questionId), eq(assignments.userId, user!.id)))
+      .limit(1);
+    if (!owned) return { ok: false, error: "Question not found." };
+    await db.delete(assignmentQuestions).where(eq(assignmentQuestions.id, owned.id));
     return { ok: true };
   });
 }
@@ -1698,6 +1826,39 @@ export async function getEventsAction() {
     if (!user) return null;
     return db.select().from(events).where(eq(events.userId, user.id)).orderBy(asc(events.date));
   });
+}
+
+/** Read-only items to overlay on the calendar: assignment due dates so a
+ *  student sees deadlines next to their own events without re-entering them.
+ *  Returns YYYY-MM-DD dates only (blank/invalid due dates are skipped). */
+export async function getCalendarOverlayAction(): Promise<{
+  assignments: { id: string; title: string; date: string; className: string }[];
+}> {
+  const empty = { assignments: [] as { id: string; title: string; date: string; className: string }[] };
+  const res = await guardRead(async () => {
+    const user = await getUser();
+    if (!user) return empty;
+    const rows = await db
+      .select({
+        id: assignments.id,
+        title: assignments.title,
+        dueDate: assignments.dueDate,
+        className: assignments.className,
+      })
+      .from(assignments)
+      .where(eq(assignments.userId, user.id));
+    return {
+      assignments: rows
+        .map((r) => ({
+          id: r.id,
+          title: r.title,
+          date: (r.dueDate ?? "").slice(0, 10),
+          className: r.className ?? "",
+        }))
+        .filter((r) => /^\d{4}-\d{2}-\d{2}$/.test(r.date)),
+    };
+  });
+  return res ?? empty;
 }
 
 export async function createEventAction(opts: {

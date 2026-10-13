@@ -69,20 +69,33 @@ body {
   color: var(--color-ink);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  /* Smooth the base light↔dark switch; the toggle's circular sweep layers
-     on top of this for the full effect. */
-  transition: background-color 0.5s ease, color 0.5s ease;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  body {
-    transition: none;
-  }
 }
 
 .dark body {
   background: var(--color-paper-dark);
   color: var(--color-cream);
+}
+
+/* Light↔dark switch: while the toggle runs (theme-anim on <html>), ease the
+   COLORS on every surface so the whole UI cross-fades between modes — no
+   covering overlay/sweep. Background leads; text/border follow so nothing
+   flashes out of contrast. The class is removed right after, so this never
+   interferes with hovers or other interactions. */
+.theme-anim,
+.theme-anim *,
+.theme-anim *::before,
+.theme-anim *::after {
+  transition: background-color 0.45s ease, border-color 0.45s ease,
+    color 0.45s ease, fill 0.45s ease, stroke 0.45s ease !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-anim,
+  .theme-anim *,
+  .theme-anim *::before,
+  .theme-anim *::after {
+    transition: none !important;
+  }
 }
 
 ::selection {

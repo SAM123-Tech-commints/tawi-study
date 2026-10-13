@@ -434,58 +434,70 @@ export function EmptyState({
 
 /* ------------------------------- RichText ---------------------------- */
 
-function renderInline(text: string, key: number, highlights?: string[]): ReactNode[] {
+function renderInline(text: string, key: number, highlights?: string[], defs?: string[]): ReactNode[] {
   // **bold** first, then lone *emphasis* (kept from PDFs/slides).
   const parts = text.split(/(\*\*[^*]+\*\*|\*[^*\n]+\*)/g);
   return parts.map((p, i) =>
     p.startsWith("**") && p.endsWith("**") && p.length > 4 ? (
       <strong key={`${key}-${i}`} className="font-semibold text-ink dark:text-cream">
-        {applyHighlights(p.slice(2, -2), `${key}-${i}`, highlights)}
+        {applyHighlights(p.slice(2, -2), `${key}-${i}`, highlights, defs)}
       </strong>
     ) : p.startsWith("*") && p.endsWith("*") && p.length > 2 && !p.startsWith("**") ? (
       <strong key={`${key}-${i}`} className="font-semibold text-ink dark:text-cream">
-        {applyHighlights(p.slice(1, -1), `${key}-${i}`, highlights)}
+        {applyHighlights(p.slice(1, -1), `${key}-${i}`, highlights, defs)}
       </strong>
     ) : (
-      <span key={`${key}-${i}`}>{applyHighlights(p, `${key}-${i}`, highlights)}</span>
+      <span key={`${key}-${i}`}>{applyHighlights(p, `${key}-${i}`, highlights, defs)}</span>
     )
   );
 }
 
-/** Wrap detected keyword phrases in <mark> so exact text keeps every word but key terms pop. */
-function applyHighlights(text: string, key: string, highlights?: string[]): ReactNode {
-  // Dedupe (case-insensitive) and match the LONGEST phrases first so
-  // "operating system" wins over "system" when both are highlighted.
+/** Build a case-insensitive alternation regex over a set of phrases, matching
+ *  the LONGEST phrases first and tolerating whitespace differences (a phrase
+ *  may wrap across line breaks in the source). Returns null when nothing is
+ *  worth matching. */
+function phraseRegex(
+  phrases: string[],
+  opts: { wordBoundary: boolean; min: number; cap: number }
+): RegExp | null {
   const seen = new Set<string>();
-  const terms = (highlights ?? [])
+  const list = (phrases ?? [])
     .map((t) => t.trim())
     .filter((t) => {
       const k = t.toLowerCase();
-      if (t.length <= 2 || seen.has(k)) return false;
+      if (t.length < opts.min || seen.has(k)) return false;
       seen.add(k);
       return true;
     })
     .sort((a, b) => b.length - a.length)
-    .slice(0, 60);
-  if (!terms.length) return <>{text}</>;
-  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  // Word-boundary each term (only where its edge is a word char) so a short
-  // term never lights up inside a bigger word ("bus" ≠ "business"), while an
-  // optional plural still matches ("CPU" also marks "CPUs"). Odd terms like
-  // "I/O" or "C++" are matched verbatim.
-  const pattern = terms
+    .slice(0, opts.cap);
+  if (!list.length) return null;
+  const esc = (s: string) =>
+    s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
+  const pattern = list
     .map((t) => {
+      if (!opts.wordBoundary) return esc(t);
+      // Word-boundary each term only where its edge is a word char, so a short
+      // term never lights up inside a bigger word ("bus" ≠ "business"), while an
+      // optional plural still matches ("CPU" also marks "CPUs"). Odd terms like
+      // "I/O" or "C++" match verbatim.
       const left = /^\w/.test(t) ? "\\b" : "";
       const right = /\w$/.test(t) ? "(?:e?s)?\\b" : "";
       return left + esc(t) + right;
     })
     .join("|");
-  let re: RegExp;
   try {
-    re = new RegExp(`(${pattern})`, "gi");
+    return new RegExp(`(${pattern})`, "gi");
   } catch {
-    return <>{text}</>;
+    return null;
   }
+}
+
+/** Innermost tier: wrap detected keyword phrases in a strong brand <mark> so
+ *  exact text keeps every word but key terms pop. */
+function markTerms(text: string, key: string, highlights?: string[]): ReactNode {
+  const re = phraseRegex(highlights ?? [], { wordBoundary: true, min: 3, cap: 60 });
+  if (!re) return <>{text}</>;
   const chunks = text.split(re);
   if (chunks.length === 1) return <>{text}</>;
   return (
@@ -506,7 +518,39 @@ function applyHighlights(text: string, key: string, highlights?: string[]): Reac
   );
 }
 
-export function RichText({ text, className, highlights }: { text: string; className?: string; highlights?: string[] }) {
+/** Highlight key terms and — when definition passages are supplied — the
+ *  definition text too, with the keyword still popping (brand) INSIDE its
+ *  softer amber definition band. This is how the study guide shows the keyword
+ *  AND its meaning together. With no defs, it degrades to term-only marking. */
+function applyHighlights(
+  text: string,
+  key: string,
+  highlights?: string[],
+  defs?: string[]
+): ReactNode {
+  const re = phraseRegex(defs ?? [], { wordBoundary: false, min: 12, cap: 40 });
+  if (!re) return markTerms(text, key, highlights);
+  const chunks = text.split(re);
+  if (chunks.length === 1) return markTerms(text, key, highlights);
+  return (
+    <>
+      {chunks.map((c, i) =>
+        i % 2 === 1 ? (
+          <mark
+            key={`${key}-d${i}`}
+            className="rounded bg-amber-100/70 px-0.5 text-ink/90 underline decoration-amber-400/60 decoration-1 underline-offset-2 print:bg-amber-100 dark:bg-amber-400/10 dark:text-cream/90"
+          >
+            {markTerms(c, `${key}-d${i}`, highlights)}
+          </mark>
+        ) : (
+          <span key={`${key}-t${i}`}>{markTerms(c, `${key}-t${i}`, highlights)}</span>
+        )
+      )}
+    </>
+  );
+}
+
+export function RichText({ text, className, highlights, defs }: { text: string; className?: string; highlights?: string[]; defs?: string[] }) {
   // Rebuild readable structure without rewriting a single word: keep every
   // original line break, split inline bullets/numbers onto their own lines,
   // and never glue or reorder words.
@@ -529,7 +573,7 @@ export function RichText({ text, className, highlights }: { text: string; classN
       <p key={`p${counter++}`} className="mb-3 leading-relaxed">
         {para.map((l, i) => (
           <span key={i}>
-            {renderInline(l, i, highlights)}
+            {renderInline(l, i, highlights, defs)}
             {i < para.length - 1 && <br />}
           </span>
         ))}
@@ -547,21 +591,21 @@ export function RichText({ text, className, highlights }: { text: string; classN
       flush();
       blocks.push(
         <h4 key={`h4${counter++}`} className="mb-2 mt-4 text-[15px] font-bold text-ink dark:text-cream">
-          {renderInline(t.replace(/^###\s/, ""), counter, highlights)}
+          {renderInline(t.replace(/^###\s/, ""), counter, highlights, defs)}
         </h4>
       );
     } else if (/^##\s/.test(t)) {
       flush();
       blocks.push(
         <h3 key={`h3${counter++}`} className="mb-2 mt-5 text-lg font-bold text-ink dark:text-cream">
-          {renderInline(t.replace(/^##\s/, ""), counter, highlights)}
+          {renderInline(t.replace(/^##\s/, ""), counter, highlights, defs)}
         </h3>
       );
     } else if (/^#\s/.test(t)) {
       flush();
       blocks.push(
         <h2 key={`h2${counter++}`} className="mb-2 mt-6 text-xl font-bold text-ink dark:text-cream">
-          {renderInline(t.replace(/^#\s/, ""), counter, highlights)}
+          {renderInline(t.replace(/^#\s/, ""), counter, highlights, defs)}
         </h2>
       );
     } else if (/^[-•*]\s+/.test(t)) {
@@ -569,7 +613,7 @@ export function RichText({ text, className, highlights }: { text: string; classN
       blocks.push(
         <div key={`li${counter++}`} className="mb-1.5 flex gap-2.5">
           <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-brand-500" />
-          <span className="leading-relaxed">{renderInline(t.replace(/^[-•*]\s+/, ""), counter, highlights)}</span>
+          <span className="leading-relaxed">{renderInline(t.replace(/^[-•*]\s+/, ""), counter, highlights, defs)}</span>
         </div>
       );
     } else if (/^\d+[.)]\s+/.test(t)) {
@@ -578,7 +622,7 @@ export function RichText({ text, className, highlights }: { text: string; classN
       blocks.push(
         <div key={`n${counter++}`} className="mb-1.5 flex gap-2.5">
           <span className="min-w-5 text-right font-bold text-brand-600 dark:text-brand-400">{num}.</span>
-          <span className="leading-relaxed">{renderInline(t.replace(/^\d+[.)]\s+/, ""), counter, highlights)}</span>
+          <span className="leading-relaxed">{renderInline(t.replace(/^\d+[.)]\s+/, ""), counter, highlights, defs)}</span>
         </div>
       );
     } else {

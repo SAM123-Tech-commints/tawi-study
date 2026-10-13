@@ -247,6 +247,133 @@ async function callAI(system: string, user: string, json: boolean): Promise<stri
   }
 }
 
+/* ------------------------------ vision ------------------------------ *
+ * Gemini (and OpenAI) can READ images: exact text plus a study-friendly
+ * description of diagrams, charts, tables and figures. Used for uploaded
+ * images and for the image/diagram/scanned pages inside a PDF that plain
+ * text extraction can't see. There is no offline fallback — vision needs a
+ * real multimodal model — so callers treat "" as "nothing readable". */
+
+export interface VisionImage {
+  /** Base64 WITHOUT the leading data: prefix. */
+  data: string;
+  /** e.g. "image/png", "image/jpeg". */
+  mime: string;
+}
+
+/** Vision runs on Gemini (preferred, generous free tier) or OpenAI; the
+ *  text-only free tiers (Groq, OpenRouter llama) are skipped. */
+function visionProvider(): { provider: Provider; key: string; model: string } | null {
+  const gKey = process.env.GEMINI_API_KEY?.trim();
+  if (gKey) {
+    const p = PROVIDERS.find((x) => x.id === "gemini")!;
+    return { provider: p, key: gKey, model: process.env.GEMINI_MODEL?.trim() || p.defaultModel };
+  }
+  const oKey = process.env.OPENAI_API_KEY?.trim();
+  if (oKey) {
+    const p = PROVIDERS.find((x) => x.id === "openai")!;
+    return { provider: p, key: oKey, model: process.env.OPENAI_MODEL?.trim() || p.defaultModel };
+  }
+  return null;
+}
+
+export function visionAvailable(): boolean {
+  return visionProvider() !== null;
+}
+
+const VISION_SYSTEM_FULL =
+  "You read study material from an image for a student. First transcribe ALL text EXACTLY as it appears, preserving headings, bullet lists and numbering. Then, for any diagram, chart, table, figure or illustration, add a clearly-labelled description on its own line starting with 'Figure: ' that explains what it shows — every label, part, axis, arrow, value and relationship — so a student can study it without seeing the image. Never invent facts that are not visible. Output plain text only.";
+
+const VISION_SYSTEM_FIGURES =
+  "You are extracting the DIAGRAMS and FIGURES from one page of a document for a student; the body paragraphs have already been captured separately. For every diagram, chart, graph, table, map, illustration, or text that appears INSIDE an image on this page, write a clearly-labelled description on its own line starting with 'Figure: ', covering every label, part, axis, arrow, value and relationship, so a student can study it without seeing the image. Do NOT re-transcribe ordinary body paragraphs of page text. If the page has no meaningful figure, diagram or embedded image, reply with exactly 'NO_FIGURE'. Never invent content. Output plain text only.";
+
+async function callGeminiVision(
+  key: string,
+  model: string,
+  system: string,
+  images: VisionImage[]
+): Promise<string> {
+  const parts: unknown[] = images.map((im) => ({
+    inline_data: { mime_type: im.mime, data: im.data },
+  }));
+  parts.push({ text: "Read this image for study exactly as instructed." });
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+      model
+    )}:generateContent`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: system }] },
+        contents: [{ role: "user", parts }],
+        generationConfig: { temperature: 0.2, maxOutputTokens: 4096 },
+      }),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    }
+  );
+  if (!res.ok) throw new Error(`Gemini vision ${res.status}`);
+  const data = await res.json();
+  const text: string =
+    data?.candidates?.[0]?.content?.parts
+      ?.map((p: { text?: string }) => p?.text ?? "")
+      .join("") ?? "";
+  return text.trim();
+}
+
+async function callOpenAIVision(
+  key: string,
+  model: string,
+  system: string,
+  images: VisionImage[]
+): Promise<string> {
+  const content: unknown[] = images.map((im) => ({
+    type: "image_url",
+    image_url: { url: `data:${im.mime};base64,${im.data}` },
+  }));
+  content.push({ type: "text", text: "Read this image for study exactly as instructed." });
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+    body: JSON.stringify({
+      model,
+      temperature: 0.2,
+      max_tokens: 4000,
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content },
+      ],
+    }),
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
+  if (!res.ok) throw new Error(`OpenAI vision ${res.status}`);
+  const data = await res.json();
+  return String(data?.choices?.[0]?.message?.content ?? "").trim();
+}
+
+/** Read one or more images for study. `mode: "full"` transcribes everything;
+ *  `mode: "figures"` focuses on diagrams/figures for a PDF page whose body text
+ *  is already captured. Returns "" when nothing readable or no vision provider. */
+export async function readImageForStudy(
+  images: VisionImage[],
+  opts: { mode?: "full" | "figures" } = {}
+): Promise<string> {
+  const active = visionProvider();
+  if (!active || !images.length) return "";
+  const system = opts.mode === "figures" ? VISION_SYSTEM_FIGURES : VISION_SYSTEM_FULL;
+  try {
+    const out =
+      active.provider.id === "gemini"
+        ? await callGeminiVision(active.key, active.model, system, images)
+        : await callOpenAIVision(active.key, active.model, system, images);
+    if (/^\s*NO_FIGURE\s*$/i.test(out)) return "";
+    return out;
+  } catch (err) {
+    warn("vision", err);
+    return "";
+  }
+}
+
 function parseJson(content: string): unknown {
   const cleaned = content.replace(/```json/gi, "").replace(/```/g, "").trim();
   const start = cleaned.indexOf("{");
@@ -264,12 +391,16 @@ function warn(step: string, err: unknown): void {
 
 /* ------------------------------ cards ----------------------------- */
 
-const CARDS_SYSTEM = `You are Tawi, an award-winning AI study tutor turning raw material into an exam reviewer.
-Rules:
-- Read the material as the exact text first: preserve every important fact, number, name and step exactly as given.
-- Each flashcard has a short "term" (1–6 words, a real exam keyword — never vague words like "Topic", "Reviewer", "Advantages", "Types" alone) and a "definition" that is one complete sentence (capitalized, ends with a period, at least 6 words).
-- Cover step-by-step procedures, bullet lists (types, advantages, parts) — each step/bullet that names something gets its own card.
-- Never invent facts. Base every card strictly on the provided material.
+const CARDS_SYSTEM = `You are Tawi, an award-winning AI study tutor. You turn a student's own material into an accurate flashcard deck for exam recall — as reliable as Quizlet or Knowt, but grounded strictly in THIS material.
+How to read the material:
+- Treat the text as the source of truth. **bold** and *italic* markers flag the exact key terms the source emphasised — turn (almost) every one of them into a flashcard.
+- Also mine: glossary lines ("Term — definition", "Term: definition"), "X is/are/refers to/means…" sentences, definitions in parentheses, and every named item inside a list (types, parts, kinds, advantages, disadvantages, steps, principles, laws).
+How to write each card:
+- "term": the exact keyword as written in the material, 1–6 words. Never a vague label on its own ("Topic", "Reviewer", "Advantages", "Types", "Introduction", "Chapter").
+- "definition": faithful to the material — quote it or paraphrase as closely as possible, NEVER invent or add outside facts. One complete sentence, capitalised, ends with a period, at least 6 words, and understandable on its own (restate the term instead of writing "it" or "this").
+- For an enumeration ("The 3 types of X are A, B, C"), make one card for the whole set (term "Types of X", definition listing A, B and C) AND, where each item is itself defined, one card per item.
+- Keep numbers, dates, formulas and names exactly as given.
+- No duplicate terms. Cover the WHOLE document, not just the opening.
 - Respond ONLY with a JSON object of the shape {"cards":[{"term":"...","definition":"..."}]}.`;
 
 export async function generateCards(
@@ -292,7 +423,7 @@ export async function generateCards(
 async function cardsCall(content: string, count: number): Promise<CardDraft[]> {
   const raw = await callAI(
     CARDS_SYSTEM,
-    `Create exactly ${count} flashcards from this study material:\n\n${content}`,
+    `Create up to ${count} flashcards from this study material. Prioritise the **bold**/*italic* key terms and every defined term, and keep each definition faithful to the wording below (do not invent facts):\n\n${content}`,
     true
   );
   const parsed = parseJson(raw) as { cards?: { term?: string; definition?: string }[] };
@@ -335,12 +466,32 @@ async function generateCardsAI(content: string, count: number): Promise<CardDraf
 
 /* ---------------------------- questions --------------------------- */
 
-const QUESTIONS_SYSTEM = `You are Tawi, an expert study-tool generator for teachers and students. Create reviewer-style practice questions from the study material.
+const QUESTION_TYPES = [
+  "mcq",
+  "true_false",
+  "short",
+  "enumeration",
+  "fill_blank",
+  "matching",
+] as const;
+
+const QUESTIONS_SYSTEM = `You are Tawi, an expert study-tool generator for teachers and students. Create reviewer-style practice questions from the study material for genuine active recall.
+Read the exact text first, then test the keywords: every question must target a real term, definition, step, number, enumeration or distinction from the material. Never invent facts that are not in the material.
+
+Question types and their EXACT JSON shape:
+- "mcq": a question with 4 options, exactly one correct. "options" = the 4 choices, "answer" = the exact text of the correct option.
+- "true_false": a statement to judge. "options" = [], "answer" = "True" or "False".
+- "short": a recall question. "options" = [], "answer" = one complete sentence quoting or closely paraphrasing the material.
+- "enumeration": asks the student to list every item of a set ("List the 4 layers of…", "Name the parts of…"). "options" = the array of correct items (one item per entry, exactly as named in the material), "answer" = those items joined with ", ".
+- "fill_blank": one sentence taken from the material with a single blank written as "_____". "question" = the sentence containing "_____", "options" = [] (or 3–5 word-bank choices if it helps), "answer" = the exact word or short phrase that fills the blank.
+- "matching": match terms to their meanings. "options" = an array of "Term :: meaning" pairs (2–5 pairs, ALWAYS separated by " :: "), "answer" = the same pairs joined with "; ".
+
 Rules:
-- Read the exact text first, then test the keywords: every question must target a real term, step, number or distinction from the material (including step-by-step procedures and advantage/disadvantage bullets).
-- Question types allowed: "mcq" (4 options, exactly one correct), "true_false" (answer "True" or "False"), "short" (answer is one complete sentence quoting or paraphrasing the material).
-- Every question must include a clear "explanation" that teaches the concept in one or more complete sentences.
-- Make questions feel natural — vary phrasing, never repeat the same question twice.
+- Use ONLY the question types the request allows. When more than one type is allowed, you MUST use each of them (at least one question per allowed type whenever the count permits), spreading the questions as evenly as you can.
+- For memorising terms, definitions and enumerations, favour "enumeration", "fill_blank" and "matching".
+- Every question needs a clear "explanation" that teaches the concept in one or more complete sentences.
+- Prefer the emphasised (**bold**/*italic*) and defined terms. Keep numbers, names, formulas and definitions faithful to the source.
+- Vary phrasing; never repeat the same question twice.
 - If the teacher adds instructions, follow them exactly.
 - Respond ONLY with a JSON object of the shape {"questions":[{"type":"...","question":"...","options":["..."],"answer":"...","explanation":"..."}]}.`;
 
@@ -361,6 +512,27 @@ export async function generateQuestions(
   return makeQuestionsLocal(content, count, types, instructions ?? "");
 }
 
+/** Per-type shape check so a malformed question never reaches the deck. */
+function validQuestion(q: GenQuestion): boolean {
+  if (q.question.length < 6) return false;
+  switch (q.type) {
+    case "mcq":
+      return q.options.length === 4 && q.answer.length > 0;
+    case "true_false":
+      return /^(true|false)$/i.test(q.answer);
+    case "short":
+      return q.answer.length > 0;
+    case "enumeration":
+      return q.options.length >= 2;
+    case "fill_blank":
+      return q.answer.length > 0;
+    case "matching":
+      return q.options.filter((o) => o.includes("::")).length >= 2;
+    default:
+      return false;
+  }
+}
+
 /** One question call — `content` is already clipped/partitioned by the caller. */
 async function questionsCall(
   content: string,
@@ -371,28 +543,36 @@ async function questionsCall(
   const raw = await callAI(
     QUESTIONS_SYSTEM,
     `Create exactly ${count} questions.
-Allowed types: ${types.length ? types.join(", ") : "mcq, true_false, short"}.
+Allowed types: ${types.length ? types.join(", ") : QUESTION_TYPES.join(", ")}.
 Teacher's additional instructions: ${instructions.trim() || "none"}.
 Study material:\n\n${content}`,
     true
   );
   const parsed = parseJson(raw) as { questions?: Partial<LocalQuestion>[] };
+  const allowed = new Set<string>(QUESTION_TYPES);
   return (parsed.questions ?? [])
-    .map((q) => ({
-      type: (["mcq", "true_false", "short"].includes(String(q.type))
-        ? q.type
-        : "mcq") as GenQuestion["type"],
-      question: String(q.question ?? "").trim(),
-      options: Array.isArray(q.options) ? q.options.map(String) : [],
-      answer: String(q.answer ?? "").trim(),
-      explanation: String(q.explanation ?? "").trim(),
-    }))
-    .filter(
-      (q) =>
-        q.question.length > 8 &&
-        q.answer.length > 0 &&
-        (q.type !== "mcq" || q.options.length === 4)
-    );
+    .map((q) => {
+      const type = (allowed.has(String(q.type)) ? q.type : "mcq") as GenQuestion["type"];
+      const options = Array.isArray(q.options)
+        ? q.options.map((o) => String(o).trim()).filter(Boolean)
+        : [];
+      let question = String(q.question ?? "").trim();
+      const answer = String(q.answer ?? "").trim();
+      // Fill-in-the-blank: guarantee a visible blank even if the model forgot
+      // one — hide the answer phrase inside the sentence.
+      if (type === "fill_blank" && answer && !/_{2,}/.test(question)) {
+        const re = new RegExp(answer.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+        question = re.test(question) ? question.replace(re, "_____") : `${question} _____`;
+      }
+      return {
+        type,
+        question,
+        options,
+        answer,
+        explanation: String(q.explanation ?? "").trim(),
+      };
+    })
+    .filter(validQuestion);
 }
 
 /** Generate many questions WITHOUT truncating the JSON: partition the material
@@ -431,8 +611,12 @@ async function generateQuestionsAI(
 
 /* ----------------------------- summary ---------------------------- */
 
-const SUMMARY_SYSTEM = `You are Tawi, an AI study assistant making an exam reviewer. Read the exact text first, then pick keywords, then summarize.
-Respond ONLY with JSON: {"overview":"3–5 sentence plain-text overview of the whole material","bullets":["8–12 concise revision bullets, each a complete thought, including steps and advantages where present"],"keyTerms":[{"term":"a real exam keyword (1–6 words, never vague words like Topic/Reviewer/Types alone)","meaning":"one complete sentence defining it"}]}.`;
+const SUMMARY_SYSTEM = `You are Tawi, an AI study assistant that condenses a student's material into a trustworthy exam reviewer. Read the whole text, respect its emphasis (**bold**/*italic* mark the key terms), and stay strictly faithful — never add facts that are not in the material.
+Produce three things:
+- "overview": 3–5 plain sentences capturing what the material is about and its main takeaways, in the same order the material presents them.
+- "bullets": 8–14 concise revision points, each a complete standalone thought. Cover the important definitions, every enumerated list (types/parts/advantages/steps), key numbers and distinctions. Do not merely repeat the overview.
+- "keyTerms": the real exam keywords (favour the emphasised/defined ones), each 1–6 words — never a vague label like Topic/Reviewer/Types alone — paired with a one-sentence definition taken faithfully from the material.
+Respond ONLY with JSON: {"overview":"...","bullets":["..."],"keyTerms":[{"term":"...","meaning":"..."}]}.`;
 
 export async function generateSummary(content: string): Promise<SummaryDraft> {
   if (aiAvailable()) {
@@ -470,12 +654,13 @@ export async function generateSummary(content: string): Promise<SummaryDraft> {
 
 /* ------------------------------ notes ----------------------------- */
 
-const NOTES_SYSTEM = `You are Tawi, a study-note formatter turning material into an exam reviewer. Read the exact text first and keep it faithful.
+const NOTES_SYSTEM = `You are Tawi, a study-note formatter that reshapes a student's material into a clean, exam-ready study guide — faithful to the source, never inventing information.
 Rules:
-- Use markdown inside "content": "##" for sub-headings, "- " bullet lists and **bold** for key terms.
-- Preserve EVERY important fact, definition, number, name and step exactly as given, including step-by-step procedures and advantage/disadvantage lists as bullets. Do not add outside information.
-- Skip cover pages and page furniture; start from the real content.
-- Group related ideas into logical sections (aim for 3–8 sections).
+- Organise the material into logical sections (aim for 3–8) that follow the document's own order. Give each a short, descriptive "heading".
+- In "content", use markdown: "## " sub-headings, "- " bullet lists for every enumeration (types, parts, steps, advantages/disadvantages), and **bold** on every key term the FIRST time it appears — especially terms the source emphasised.
+- When the material defines a term, keep the definition next to the bolded term ("**Term** — its definition…") so the keyword and its meaning read together.
+- Preserve every important fact, definition, number, name and step exactly as given. Do not add outside information or commentary.
+- Skip cover pages, page numbers and other furniture; start from the real content.
 Respond ONLY with JSON: {"sections":[{"heading":"...","content":"markdown text"}]}.`;
 
 export async function generateNotes(content: string): Promise<NotesDraft> {

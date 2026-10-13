@@ -29,7 +29,51 @@ export function stripBoilerplate(text: string): string {
     }
     return true;
   });
-  return kept.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+
+  // Second pass: OCR and web sources often repeat a course title / institution
+  // stamp on every page and those lines survive the extractor's page bands.
+  // A short, unpunctuated, heading-like line that repeats across a real share
+  // of the document is furniture — drop every copy.
+  const keyOf = (t: string) =>
+    t
+      .replace(/^#{1,6}\s+/, "")
+      .replace(/^[-•*▪‣]\s+/, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .toLowerCase();
+  const freq = new Map<string, number>();
+  for (const line of kept) {
+    const t = line.trim();
+    if (looksLikeRunningHeader(t)) {
+      const k = keyOf(t);
+      if (k) freq.set(k, (freq.get(k) ?? 0) + 1);
+    }
+  }
+  const threshold = Math.max(3, Math.ceil(kept.length * 0.05));
+  const dropped = new Set([...freq].filter(([, n]) => n >= threshold).map(([k]) => k));
+  const filtered = dropped.size
+    ? kept.filter((line) => {
+        const t = line.trim();
+        return !(looksLikeRunningHeader(t) && dropped.has(keyOf(t)));
+      })
+    : kept;
+
+  return filtered.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/** An ALL-CAPS heading-like line that has no sentence-ending punctuation and is
+ *  not a list item — the shape of an institution/course stamp that repeats on
+ *  every page rather than content. (Title-case prose is left untouched, so
+ *  real section headings survive.) */
+function looksLikeRunningHeader(t: string): boolean {
+  if (!t) return false;
+  if (/^[-•*▪‣]\s/.test(t) || /^\d{1,3}[.)]\s/.test(t)) return false; // list item
+  if (/[.!?]$/.test(t)) return false; // a real sentence
+  const core = t.replace(/^#{1,6}\s+/, "").replace(/\s+/g, " ").trim();
+  const letters = core.replace(/[^A-Za-z]/g, "");
+  if (letters.length < 2) return false;
+  const words = core.split(" ").filter(Boolean);
+  return core === core.toUpperCase() && words.length <= 14 && core.length <= 90;
 }
 
 export function splitSentences(text: string): string[] {
@@ -125,7 +169,10 @@ const COMMON_VERBS = new Set(
     "become begins begin ends end sends send receives receive carries carry adds add labels label " +
     "breaks break splits split forms form applies apply exempted entrenched circulated reversed " +
     "brought driven drawn layered introduced prepares prepare copies copy grows grow divided " +
-    "reassembled formatted reported designed known called defined").split(" ")
+    "reassembled formatted reported designed known called defined stores store organise organises " +
+    "organize organizes connects connect solves solve follows follow holds hold keeps keep picks " +
+    "pick sorts sort searches search inserts insert deletes delete traverses traverse visits visit " +
+    "links link points point performs perform executes execute runs run returns return").split(" ")
 );
 
 /* Document furniture: "Lesson 2", "Chapter 4", "Figure 1.3", "Week 5". */
@@ -203,6 +250,18 @@ function polishDefinition(d: string): string {
   return out.replace(/,\.$/, ".");
 }
 
+/** Keep only the first sentence of a captured definition. Regex captures with a
+ *  greedy tail can pull in the NEXT sentence (and its topic) when two
+ *  definitions share a line — a card front of "Mitosis" must not end with a
+ *  sentence about osmosis. Requires a real sentence boundary (punctuation +
+ *  space + capital, or end of string) and a first sentence of at least 15
+ *  characters, so abbreviations and short fragments are left alone. */
+function firstSentenceOf(s: string): string {
+  const t = s.trim();
+  const m = t.match(/^([\s\S]{15,}?[.!?])(?:\s+[A-Z"'(]|\s*$)/);
+  return m ? m[1].trim() : t;
+}
+
 export function extractTerms(text: string): TermDef[] {
   const lines = normalize(stripBoilerplate(text)).split("\n");
   const out: TermDef[] = [];
@@ -214,9 +273,11 @@ export function extractTerms(text: string): TermDef[] {
     if (t.length < 3 || t.length > 80 || d.length < 20 || d.length > 400) return;
     if (d.split(/\s+/).length < 4) return;
     if (isBadTerm(t)) return;
-    // The capture starts mid-sentence ("group of protocols…"), so tidy the
-    // front and close the sentence — this is the visible back of a flashcard.
-    const def = polishDefinition(d);
+    // The capture starts mid-sentence ("group of protocols…") and may run past
+    // the end of this sentence into the next one; keep only the first sentence,
+    // then tidy the front and close it — this is the visible back of a card.
+    const def = polishDefinition(firstSentenceOf(d));
+    if (def.length < 20) return;
     const key = t.toLowerCase();
     const existing = out.findIndex((x) => x.term.toLowerCase() === key);
     if (existing !== -1) {
@@ -404,6 +465,9 @@ export function makeCardsLocal(text: string, count: number): TermDef[] {
     if (isDanglingOpener(s)) continue;
     // Skip title lines — "Lesson 2: Network Protocols" is not a definition.
     if (STRUCTURAL_LABEL.test(s.split(/[:.]/, 1)[0].trim())) continue;
+    // A line that ends on ":" or ";" is a section heading/list lead-in, not a
+    // definition ("Types of data structures:").
+    if (/[:;]$/.test(s.trim())) continue;
     const term = termFor(s);
     if (!term) continue;
     const key = term.toLowerCase();
@@ -419,7 +483,7 @@ export function makeCardsLocal(text: string, count: number): TermDef[] {
 /* ---------------------------- questions --------------------------- */
 
 export interface LocalQuestion {
-  type: "mcq" | "true_false" | "short";
+  type: "mcq" | "true_false" | "short" | "enumeration" | "fill_blank" | "matching";
   question: string;
   options: string[];
   answer: string;
@@ -511,6 +575,72 @@ function shortPrompt(term: string): string {
   return `Explain ${subject} in your own words.`;
 }
 
+/** Shorten a definition to a clean, one-line meaning for matching questions. */
+function trimMeaning(d: string): string {
+  const t = d.replace(/\s+/g, " ").replace(/^[:\-–—]\s*/, "").trim();
+  if (t.length <= 120) return t;
+  return t.slice(0, 117).replace(/\s+\S*$/, "") + "…";
+}
+
+/** Detect enumerations the material spells out — "The N Xs are a, b and c", or
+ *  an intro line ending in ":" followed by a run of bullet items. Returns what
+ *  to list (the prompt) and the exact items, for enumeration questions. */
+export function extractEnumerations(text: string): { prompt: string; items: string[] }[] {
+  const lines = normalize(stripBoilerplate(text)).split("\n");
+  const out: { prompt: string; items: string[] }[] = [];
+  const cleanItem = (s: string) =>
+    s
+      .replace(/^[-•*‣▪]\s*/, "")
+      .replace(/\*\*/g, "")
+      .split(/\s[—:–]\s|:\s/)[0] // keep the item name, drop its trailing definition
+      .replace(/[.;]$/, "")
+      .trim();
+  const addSet = (prompt: string, items: string[]) => {
+    const uniq = [...new Set(items.filter((x) => x.length >= 2 && x.length <= 100 && !/^\d+$/.test(x)))];
+    const p = prompt.replace(/^(the|there are|these|those|following)\s+/i, "").trim();
+    if (uniq.length >= 3 && uniq.length <= 12 && p.length >= 4 && !isDanglingOpener(p)) {
+      if (!out.some((e) => e.prompt.toLowerCase() === p.toLowerCase())) out.push({ prompt: p, items: uniq });
+    }
+  };
+
+  // (a) inline list: "... are/include:  A, B, C[ and D]"
+  for (const raw of lines) {
+    const line = raw.replace(/\*\*/g, "").trim();
+
+    // (a1) Colon lead-in is the clearest signal — the prompt is everything
+    // before the colon, so we never grab just the first word ("There").
+    const colon = line.match(/^(.{3,90}?):\s*(.+)$/);
+    if (colon && /,.+/.test(colon[2])) {
+      const items = colon[2].replace(/\.$/, "").split(/,|\band\b|&|;/i).map(cleanItem);
+      addSet(colon[1], items);
+      continue;
+    }
+
+    // (a2) "The N Xs are / include / consist of A, B and C".
+    const m = line.match(
+      /^(.{3,90}?)\s+(?:\bare\b|\binclude[s]?\b|\bconsist[s]? of\b|\bcomprise[s]?\b)\s+(.+)$/i
+    );
+    if (!m) continue;
+    if (!/,/.test(m[2]) && !/\band\b/i.test(m[2])) continue;
+    const items = m[2].replace(/\.$/, "").split(/,|\band\b|&|;/i).map(cleanItem);
+    addSet(m[1], items);
+  }
+
+  // (b) bullet group under an intro line ending in ":"
+  for (let i = 0; i < lines.length; i++) {
+    if (!/:$/.test(lines[i].replace(/\*\*/g, "").trim())) continue;
+    const items: string[] = [];
+    let j = i + 1;
+    while (j < lines.length && /^\s*[-•*‣▪]\s+/.test(lines[j])) {
+      items.push(cleanItem(lines[j]));
+      j++;
+    }
+    if (items.length >= 3) addSet(lines[i].replace(/\*\*/g, "").replace(/:$/, "").trim(), items);
+    i = j - 1;
+  }
+  return out;
+}
+
 export function makeQuestionsLocal(
   text: string,
   count: number,
@@ -540,6 +670,10 @@ export function makeQuestionsLocal(
    * lists), fall back to the card generator so "short" is never silently
    * dropped from a requested question mix. */
   const shortSubjects: TermDef[] = terms.length ? terms : makeCardsLocal(text, 10);
+  // Enumerations (for "enumeration") and defined term↔meaning pairs (for
+  // "matching") the material actually spells out.
+  const enums = extractEnumerations(text);
+  const matchPairs = shortSubjects.filter((t) => t.definition.length >= 15);
 
   const out: LocalQuestion[] = [];
   const used = new Set<string>();
@@ -548,11 +682,12 @@ export function makeQuestionsLocal(
   let sIdx = 0;
   let guard = 0;
 
-  while (out.length < count && guard++ < count * 6) {
+  while (out.length < count && guard++ < count * 8) {
     const type = allowed[tIdx % allowed.length];
     tIdx++;
 
-    if (type === "short" && shortSubjects.length > 0) {
+    if (type === "short") {
+      if (!shortSubjects.length) continue;
       const t = shortSubjects[Math.floor(Math.random() * shortSubjects.length)];
       const q = shortPrompt(t.term);
       if (!used.has(q)) {
@@ -568,13 +703,63 @@ export function makeQuestionsLocal(
       continue;
     }
 
+    if (type === "enumeration") {
+      if (!enums.length) continue;
+      const e = enums[Math.floor(Math.random() * enums.length)];
+      const key = `enum:${e.prompt.toLowerCase()}`;
+      if (!used.has(key)) {
+        used.add(key);
+        out.push({
+          type: "enumeration",
+          question: `List all of the following — ${e.prompt}.`,
+          options: e.items,
+          answer: e.items.join(", "),
+          explanation: `${e.prompt[0].toUpperCase() + e.prompt.slice(1)}: ${e.items.join(", ")}.`,
+        });
+      }
+      continue;
+    }
+
+    if (type === "matching") {
+      if (matchPairs.length < 3) continue;
+      const picks = shuffle(matchPairs).slice(0, Math.min(4, matchPairs.length));
+      const key = `match:${picks.map((p) => p.term.toLowerCase()).sort().join("|")}`;
+      if (!used.has(key)) {
+        used.add(key);
+        const pairs = picks.map((p) => `${p.term} :: ${trimMeaning(p.definition)}`);
+        out.push({
+          type: "matching",
+          question: "Match each term to its correct meaning.",
+          options: pairs,
+          answer: pairs.join("; "),
+          explanation: picks.map((p) => `${p.term} — ${trimMeaning(p.definition)}`).join(" "),
+        });
+      }
+      continue;
+    }
+
+    // Only the sentence-based formats fall through. Anything else the material
+    // can't support is skipped — never silently mislabelled as multiple choice.
+    if (type !== "mcq" && type !== "true_false" && type !== "fill_blank") continue;
+
     const s = sents[sIdx % Math.max(1, sents.length)];
     sIdx++;
     if (!s) continue;
     const blank = blankable(s, freq);
     if (!blank) continue;
 
-    if (type === "true_false") {
+    if (type === "fill_blank") {
+      const q = s.replace(new RegExp(`\\b${blank}\\b`, "i"), "_____");
+      if (used.has(q) || !q.includes("_____")) continue;
+      used.add(q);
+      out.push({
+        type: "fill_blank",
+        question: q,
+        options: [],
+        answer: blank,
+        explanation: s,
+      });
+    } else if (type === "true_false") {
       const falseSentence = makeFalse(s);
       if (falseSentence && Math.random() < 0.55) {
         const q = `True or False: ${falseSentence}`;
@@ -613,6 +798,21 @@ export function makeQuestionsLocal(
         options: shuffle([blank, ...distractors]),
         answer: blank,
         explanation: s,
+      });
+    }
+  }
+
+  // Safety net: if the requested formats couldn't be built from this material
+  // (e.g. "enumeration" only, but the text spells out no lists), top up with
+  // short-answer recall so the student never gets an empty quiz.
+  if (out.length === 0 && shortSubjects.length > 0) {
+    for (const t of shortSubjects.slice(0, count)) {
+      out.push({
+        type: "short",
+        question: shortPrompt(t.term),
+        options: [],
+        answer: t.definition,
+        explanation: t.definition,
       });
     }
   }

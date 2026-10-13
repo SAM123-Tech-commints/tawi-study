@@ -514,7 +514,7 @@ export default function ProfilePage() {
           <Shield size={18} /> Security
         </h2>
         <p className="text-[13px] text-ink/55 dark:text-cream/55">
-          Change your password to keep your account secure. Social sign-in accounts don't have a password.
+          Change your password to keep your account secure. Social sign-in accounts don&apos;t have a password.
         </p>
         <div className="space-y-3">
           <Field label="Current password">

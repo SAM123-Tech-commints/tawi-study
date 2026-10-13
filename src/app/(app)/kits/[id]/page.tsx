@@ -40,6 +40,7 @@ import {
   useToast,
 } from "@/components/ui";
 import { formatInterval } from "@/lib/srs";
+import { questionTypeLabel } from "@/lib/quiz";
 
 type KitData = NonNullable<Awaited<ReturnType<typeof getKitData>>>;
 
@@ -268,7 +269,7 @@ export default function KitDetailPage() {
                   <div className="min-w-0">
                     <p className="text-[14px] font-semibold leading-relaxed text-ink dark:text-cream">{q.question}</p>
                     <div className="mt-2 flex flex-wrap items-center gap-2">
-                      <Badge tone="neutral">{q.type === "mcq" ? "Multiple choice" : q.type === "true_false" ? "True / False" : "Short answer"}</Badge>
+                      <Badge tone="neutral">{questionTypeLabel(q.type)}</Badge>
                       <span className="text-[12px] font-medium text-ink/50 dark:text-cream/50">
                         Answer: {q.answer}
                       </span>

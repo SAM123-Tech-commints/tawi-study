@@ -165,7 +165,21 @@ export const cards = pgTable("cards", {
   order: integer("order").notNull().default(0),
 });
 
-export type QuestionType = "mcq" | "true_false" | "short";
+/** Practice-question formats. The DB stores this as free `text`, so new
+ *  formats need no migration.
+ *  - mcq          4 options, one correct
+ *  - true_false   answer is "True" | "False"
+ *  - short        one-sentence typed answer
+ *  - enumeration  list every item of a set; `options` holds the correct items
+ *  - fill_blank   sentence with a "_____"; `answer` fills it, `options` may be a word bank
+ *  - matching     `options` holds "Term :: meaning" pairs to pair up */
+export type QuestionType =
+  | "mcq"
+  | "true_false"
+  | "short"
+  | "enumeration"
+  | "fill_blank"
+  | "matching";
 export interface GenQuestion {
   id?: string;
   type: QuestionType;

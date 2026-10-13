@@ -319,31 +319,38 @@ function createPool(): Pool {
 
   const ensureReady = (): Promise<void> => {
     g.__tiaReady ??= (async () => {
-      try {
-        for (const stmt of BOOTSTRAP_STATEMENTS) {
+      // Each statement runs independently: one failing ALTER/INDEX must never
+      // abort the rest, or a fresh database would end up half-created (only the
+      // first few tables). Failures are logged and skipped, and /api/migrate
+      // can always repair the schema later.
+      for (const stmt of BOOTSTRAP_STATEMENTS) {
+        try {
           await Promise.race([
             (rawQuery as (sql: string) => Promise<QueryResult>)(stmt),
             new Promise<never>((_, reject) =>
               setTimeout(() => reject(new Error("DDL timeout")), 8000)
             ),
           ]);
+        } catch (err) {
+          console.warn(
+            "[db] bootstrap statement skipped:",
+            err instanceof Error ? err.message : err
+          );
         }
-      } catch (err) {
-        console.warn(
-          "[db] schema bootstrap skipped:",
-          err instanceof Error ? err.message : err
-        );
       }
     })();
     return g.__tiaReady;
   };
 
-  // Run bootstrap in the background — don't block normal queries.
-  // If bootstrap fails, the /api/migrate endpoint handles it.
+  // Kick the schema bootstrap off now (memoised). The query patch below also
+  // awaits it, so the first statement is guaranteed a ready schema.
   ensureReady().catch(() => {});
 
   type AnyArgs = Parameters<RawQuery>;
   pool.query = (async (...args: AnyArgs) => {
+    // Guarantee the schema exists before the first real statement runs. The
+    // bootstrap promise is memoised, so only the very first query ever waits.
+    await ensureReady();
     return (rawQuery as (...a: AnyArgs) => Promise<QueryResult>)(...args);
   }) as unknown as typeof pool.query;
 

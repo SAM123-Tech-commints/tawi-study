@@ -14,8 +14,10 @@ import {
   UploadCloud,
 } from "lucide-react";
 import { createKitAction, fetchUrlAction, getSessionInfo } from "@/lib/actions";
-import { extractPdfText, extractTextFile, getPdfPageCount } from "@/components/pdf";
+import { extractPdfText, extractTextFile, getPdfPageCount, renderPdfImagePages } from "@/components/pdf";
 import { extractTerms } from "@/lib/text";
+import { questionTypeLabel } from "@/lib/quiz";
+import { TermPicker, type PickedTerm } from "@/components/term-picker";
 import {
   Badge,
   Button,
@@ -46,6 +48,16 @@ const GENERATE_STAGES = [
 
 const MAX_PAGE_CHARS = 3200;
 
+/** Every practice format, all on by default — "include all possible". */
+const QUESTION_TYPE_OPTIONS = [
+  "mcq",
+  "true_false",
+  "short",
+  "enumeration",
+  "fill_blank",
+  "matching",
+] as const;
+
 export default function NewKitPage() {
   const router = useRouter();
   const { toast } = useToast();
@@ -61,16 +73,28 @@ export default function NewKitPage() {
   const [stageIdx, setStageIdx] = useState(0);
   const [cardCount, setCardCount] = useState(14);
   const [questionCount, setQuestionCount] = useState(12);
+  const [questionTypes, setQuestionTypes] = useState<string[]>([...QUESTION_TYPE_OPTIONS]);
+  const [pickedTerms, setPickedTerms] = useState<PickedTerm[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const [isGuest, setIsGuest] = useState(false);
   const [editing, setEditing] = useState<number | null>(null);
   const [editDraft, setEditDraft] = useState("");
   const [ocrFile, setOcrFile] = useState<File | null>(null);
   const [ocrBusy, setOcrBusy] = useState(false);
+  const [visionOn, setVisionOn] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     getSessionInfo().then((info) => setIsGuest(info?.isGuest ?? false));
+  }, []);
+
+  // Is AI vision configured? If so we can read diagrams/figures in PDFs and
+  // read uploaded images with the AI model instead of plain OCR.
+  useEffect(() => {
+    fetch("/api/vision")
+      .then((r) => r.json())
+      .then((d) => setVisionOn(!!d?.available))
+      .catch(() => setVisionOn(false));
   }, []);
 
   useEffect(() => {
@@ -89,6 +113,39 @@ export default function NewKitPage() {
     setSources((s) => [...s, { name, text, noTranscript }]);
     if (!title) setTitle(name.replace(/\.[^.]+$/, "").slice(0, 60));
     toast(`“${name}” added to your kit`);
+  };
+
+  const dataUrlToBlob = (dataUrl: string): Blob => {
+    const [head, b64] = dataUrl.split(",");
+    const mime = /data:(.*?);base64/.exec(head)?.[1] ?? "image/png";
+    const bin = atob(b64 ?? "");
+    const arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    return new Blob([arr], { type: mime });
+  };
+
+  // Send rendered PDF pages (diagrams / scanned pages) to the AI vision endpoint
+  // and stitch the descriptions back together, labelled per page.
+  const visionReadPages = async (
+    pages: { page: number; dataUrl: string }[]
+  ): Promise<string> => {
+    const results = await Promise.all(
+      pages.map(async (p) => {
+        try {
+          const form = new FormData();
+          form.append("file", dataUrlToBlob(p.dataUrl), `page-${p.page}.png`);
+          form.append("mode", "figures");
+          const res = await fetch("/api/vision", { method: "POST", body: form });
+          const data = await res.json();
+          return data?.ok && data.text
+            ? `【Page ${p.page} — images & diagrams】\n${data.text}`
+            : "";
+        } catch {
+          return "";
+        }
+      })
+    );
+    return results.filter(Boolean).join("\n\n");
   };
 
   const handleFile = async (file: File) => {
@@ -115,9 +172,43 @@ export default function NewKitPage() {
           /* page count is a nicety — text extraction still proceeds */
         }
         text = await extractPdfText(file);
-      }
-      else if (isImage) {
-        // Auto-send images to OCR immediately
+        // Read diagrams, figures and scanned/image pages the text layer can't
+        // see, and fold their AI descriptions into the material.
+        if (visionOn) {
+          try {
+            const imgPages = await renderPdfImagePages(file, { maxPages: 6 });
+            if (imgPages.length) {
+              toast(`Reading ${imgPages.length} image/diagram page${imgPages.length > 1 ? "s" : ""} with AI…`);
+              const extra = await visionReadPages(imgPages);
+              if (extra.trim()) text = `${text}\n\n${extra}`.trim();
+            }
+          } catch {
+            /* vision is an enhancement — plain text still stands */
+          }
+        }
+      } else if (isImage) {
+        // Prefer AI vision (exact text + diagram descriptions); fall back to OCR.
+        if (visionOn) {
+          setOcrBusy(true);
+          try {
+            const form = new FormData();
+            form.append("file", file);
+            form.append("mode", "full");
+            const res = await fetch("/api/vision", { method: "POST", body: form });
+            const data = await res.json();
+            if (data?.ok && (data.text?.length ?? 0) > 40) {
+              setOcrBusy(false);
+              addSource(file.name + " (AI vision)", data.text);
+              toast("Image read with AI vision ✨");
+              setExtracting(false);
+              return;
+            }
+          } catch {
+            /* fall through to OCR */
+          }
+          setOcrBusy(false);
+        }
+        // OCR fallback (no vision key, or vision found nothing).
         setOcrBusy(true);
         const form = new FormData();
         form.append("file", file);
@@ -130,17 +221,16 @@ export default function NewKitPage() {
           setExtracting(false);
           return;
         }
-        // If OCR failed or too short, still add the image as a source
+        // If OCR failed or too short, still offer to retry.
         setOcrFile(file);
         toast("Could not extract text from this image. Try a clearer image.", "error");
         setExtracting(false);
         return;
       } else text = await extractTextFile(file);
       if (text.trim().length < 80) {
-        // Probably a scanned PDF — offer server-side OCR.
+        // Probably a scanned PDF with no text layer and no vision key — OCR it.
         setOcrFile(file);
         toast("This looks like a scanned file. Scanning with OCR...", "error");
-        // Auto-trigger OCR for scanned PDFs too
         setOcrBusy(true);
         const form = new FormData();
         form.append("file", file);
@@ -206,6 +296,10 @@ export default function NewKitPage() {
   };
 
   const totalChars = sources.reduce((a, s) => a + s.text.length, 0);
+  const pickerText = useMemo(
+    () => sources.map((s) => s.text.slice(0, Math.max(1, pages) * MAX_PAGE_CHARS)).join("\n\n"),
+    [sources, pages]
+  );
   const detectedTerms = useMemo(() => {
     if (!sources.length) return 0;
     try {
@@ -239,6 +333,8 @@ export default function NewKitPage() {
       sourceName: sources.map((s) => s.name).join(", "),
       cardCount,
       questionCount,
+      questionTypes,
+      terms: pickedTerms,
     });
     if (!res.ok) {
       setGenerating(false);
@@ -365,7 +461,10 @@ export default function NewKitPage() {
                   <UploadCloud size={26} />
                 </span>
                 <p className="mt-4 text-[15px] font-bold text-ink dark:text-cream">Click the cloud or drop your file</p>
-                <p className="mt-1 text-[13px] text-ink/50 dark:text-cream/50">PDF, images, TXT, MD, CSV · up to 80 pages · scanned PDFs use OCR</p>
+                <p className="mt-1 text-[13px] text-ink/50 dark:text-cream/50">
+                  PDF, images, TXT, MD, CSV · up to 80 pages ·{" "}
+                  {visionOn ? "AI reads diagrams, figures & images in your PDFs" : "scanned PDFs use OCR"}
+                </p>
               </>
             )}
           </div>
@@ -555,6 +654,9 @@ export default function NewKitPage() {
         </Card>
       )}
 
+      {/* Confirm key terms (auto-detected, editable) */}
+      {sources.length > 0 && <TermPicker sourceText={pickerText} onChange={setPickedTerms} />}
+
       {/* Settings */}
       {sources.length > 0 && (
         <Card className="mt-5">
@@ -589,6 +691,46 @@ export default function NewKitPage() {
                 className="w-full accent-[#96C51F]"
               />
             </Field>
+          </div>
+          <div className="mt-5">
+            <div className="mb-2 flex items-center justify-between">
+              <Label2>Question types</Label2>
+              <button
+                onClick={() =>
+                  setQuestionTypes((t) =>
+                    t.length === QUESTION_TYPE_OPTIONS.length ? ["mcq"] : [...QUESTION_TYPE_OPTIONS]
+                  )
+                }
+                className="text-xs font-bold text-brand-700 hover:underline dark:text-brand-400"
+              >
+                {questionTypes.length === QUESTION_TYPE_OPTIONS.length ? "Clear" : "Select all"}
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {QUESTION_TYPE_OPTIONS.map((v) => {
+                const on = questionTypes.includes(v);
+                return (
+                  <button
+                    key={v}
+                    onClick={() =>
+                      setQuestionTypes((t) => (on ? t.filter((x) => x !== v) : [...t, v]))
+                    }
+                    className={cn(
+                      "rounded-full border px-3.5 py-1.5 text-[13px] font-bold transition",
+                      on
+                        ? "border-brand-500 bg-brand-100 text-ink dark:bg-brand-500/15 dark:text-brand-300"
+                        : "border-ink/12 bg-surface text-ink/55 hover:border-ink/30 dark:border-cream/15 dark:bg-surface-dark dark:text-cream/55"
+                    )}
+                  >
+                    {questionTypeLabel(v)}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-2 text-xs text-ink/45 dark:text-cream/45">
+              Enumeration, fill-in-the-blank and matching are great for memorising terms, definitions
+              and lists. All on by default.
+            </p>
           </div>
         </Card>
       )}

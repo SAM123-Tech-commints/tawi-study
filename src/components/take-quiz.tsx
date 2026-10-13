@@ -5,6 +5,14 @@ import { ArrowLeft, ArrowRight, BookOpen, CheckCircle2, ClipboardList, XCircle }
 import { submitAttemptAction } from "@/lib/actions";
 import { findRelatedSentences } from "@/lib/text";
 import {
+  encodeMatchAnswer,
+  enumerationItems,
+  gradeAnswer,
+  normAnswer,
+  parseMatchPairs,
+  questionTypeLabel,
+} from "@/lib/quiz";
+import {
   Badge,
   Button,
   cn,
@@ -28,6 +36,87 @@ interface TakeData {
   };
   questions: AssignmentQuestionRow[];
   contentExcerpt: string;
+}
+
+function shuffleArr<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+/** Matching: pick a meaning for each term from a shuffled dropdown. Isolated in
+ *  its own component (remounted per question) so its useMemo shuffle keeps a
+ *  stable hook order. */
+function MatchingInput({
+  q,
+  value,
+  setValue,
+  reveal,
+}: {
+  q: AssignmentQuestionRow;
+  value: string;
+  setValue: (v: string) => void;
+  reveal: boolean;
+}) {
+  const pairs = useMemo(() => parseMatchPairs(q.options), [q.options]);
+  const meanings = useMemo(() => shuffleArr(pairs.map((p) => p.meaning)), [pairs]);
+  const chosen = new Map(parseMatchPairs(value).map((p) => [p.term, p.meaning]));
+
+  const setPair = (term: string, meaning: string) => {
+    const next = pairs.map((p) => ({
+      term: p.term,
+      meaning: p.term === term ? meaning : chosen.get(p.term) ?? "",
+    }));
+    setValue(encodeMatchAnswer(next));
+  };
+
+  return (
+    <div className="grid gap-2.5">
+      {pairs.map((p) => {
+        const sel = chosen.get(p.term) ?? "";
+        const correct = reveal && normAnswer(sel) === normAnswer(p.meaning);
+        const wrong = reveal && !!sel && !correct;
+        return (
+          <div
+            key={p.term}
+            className={cn(
+              "grid grid-cols-1 gap-2 rounded-2xl border px-3.5 py-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] sm:items-center",
+              correct
+                ? "border-green-500 bg-green-50 dark:bg-green-500/10"
+                : wrong
+                  ? "border-red-400 bg-red-50 dark:bg-red-500/10"
+                  : "border-ink/12 bg-surface dark:border-cream/15 dark:bg-surface-dark"
+            )}
+          >
+            <span className="text-sm font-bold text-ink dark:text-cream">{p.term}</span>
+            <div>
+              <select
+                value={sel}
+                disabled={reveal}
+                onChange={(e) => setPair(p.term, e.target.value)}
+                className="w-full rounded-xl border border-ink/15 bg-surface px-3 py-2 text-sm font-medium text-ink outline-none focus:border-brand-500 disabled:opacity-70 dark:border-cream/15 dark:bg-surface-dark dark:text-cream"
+              >
+                <option value="">Choose a match…</option>
+                {meanings.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+              {wrong && (
+                <p className="mt-1 text-xs font-semibold text-green-700 dark:text-green-300">
+                  Correct: {p.meaning}
+                </p>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 function QuestionInput({
@@ -101,17 +190,62 @@ function QuestionInput({
       </div>
     );
   }
+  if (q.type === "matching") {
+    return <MatchingInput key={q.id} q={q} value={value} setValue={setValue} reveal={reveal} />;
+  }
+  if (q.type === "enumeration") {
+    const items = enumerationItems(q);
+    const got = normAnswer(value);
+    return (
+      <div>
+        <textarea
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          disabled={reveal}
+          placeholder="List each item — one per line, or separated by commas…"
+          rows={Math.max(3, Math.min(8, items.length + 1))}
+          className={cn(
+            "w-full rounded-2xl border-2 px-4 py-3 text-sm font-medium outline-none transition",
+            reveal
+              ? "border-ink/15 bg-surface text-ink dark:border-cream/15 dark:bg-surface-dark dark:text-cream"
+              : "border-ink/15 bg-surface text-ink focus:border-brand-500 dark:border-cream/15 dark:bg-surface-dark dark:text-cream"
+          )}
+        />
+        {reveal && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {items.map((it) => {
+              const hit = got.includes(normAnswer(it));
+              return (
+                <span
+                  key={it}
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold",
+                    hit
+                      ? "bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-300"
+                      : "bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300"
+                  )}
+                >
+                  {hit ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
+                  {it}
+                </span>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
+  const isRight = reveal && gradeAnswer(q, value);
   return (
-    <textarea
+    <input
       value={value}
       onChange={(e) => setValue(e.target.value)}
       disabled={reveal}
-      placeholder="Type your answer…"
-      rows={3}
+      placeholder={q.type === "fill_blank" ? "Type the missing word or phrase…" : "Type your answer…"}
       className={cn(
         "w-full rounded-2xl border-2 px-4 py-3 text-sm font-medium outline-none transition",
         reveal
-          ? value.trim().toLowerCase() === q.answer.trim().toLowerCase()
+          ? isRight
             ? "border-green-500 bg-green-100 text-green-800 dark:bg-green-500/20 dark:text-green-300"
             : "border-red-400 bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300"
           : "border-ink/15 bg-surface text-ink focus:border-brand-500 dark:border-cream/15 dark:bg-surface-dark dark:text-cream"
@@ -131,12 +265,7 @@ export function TakeQuiz({ data }: { data: TakeData }) {
   const { assignment, questions, contentExcerpt } = data;
   const total = questions.length;
   const score = useMemo(() => {
-    return questions.reduce(
-      (acc, q, i) =>
-        acc +
-        ((answers[i] ?? "").trim().toLowerCase() === (q.answer ?? "").trim().toLowerCase() ? 1 : 0),
-      0
-    );
+    return questions.reduce((acc, q, i) => acc + (gradeAnswer(q, answers[i] ?? "") ? 1 : 0), 0);
   }, [questions, answers]);
 
   const start = () => {
@@ -201,7 +330,7 @@ export function TakeQuiz({ data }: { data: TakeData }) {
           <p className="text-sm font-bold text-ink dark:text-cream">
             Question {idx + 1} <span className="font-medium text-ink/50 dark:text-cream/50">of {total}</span>
           </p>
-          <Badge tone="brand">{q.type === "mcq" ? "Multiple choice" : q.type === "true_false" ? "True / False" : "Short answer"}</Badge>
+          <Badge tone="brand">{questionTypeLabel(q.type)}</Badge>
         </div>
         <ProgressBar value={idx} max={total} className="mb-7" />
         <div className="rounded-3xl border border-ink/8 bg-surface p-6 shadow-sm dark:border-cream/10 dark:bg-surface-dark sm:p-8">
@@ -250,7 +379,7 @@ export function TakeQuiz({ data }: { data: TakeData }) {
       <div className="space-y-4">
         {questions.map((q, i) => {
           const userAnswer = answers[i] ?? "";
-          const correct = userAnswer.trim().toLowerCase() === q.answer.trim().toLowerCase();
+          const correct = gradeAnswer(q, userAnswer);
           const notes = findRelatedSentences(contentExcerpt, `${q.question} ${q.answer}`, 3);
           return (
             <div

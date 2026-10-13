@@ -21,6 +21,7 @@ import {
   generateAssignmentQuestionsAction,
   getAssignmentData,
 } from "@/lib/actions";
+import { questionTypeLabel } from "@/lib/quiz";
 import {
   Badge,
   Button,
@@ -173,9 +174,7 @@ export default function AssignmentDetailPage() {
                   <div className="min-w-0 flex-1">
                     <p className="text-[15px] font-semibold leading-relaxed text-ink dark:text-cream">{q.question}</p>
                     <div className="mt-2.5 flex flex-wrap items-center gap-2">
-                      <Badge tone="neutral">
-                        {q.type === "mcq" ? "Multiple choice" : q.type === "true_false" ? "True / False" : "Short answer"}
-                      </Badge>
+                      <Badge tone="neutral">{questionTypeLabel(q.type)}</Badge>
                       <span className="text-[12.5px] font-medium text-ink/50 dark:text-cream/50">
                         Answer: <span className="font-semibold text-green-600 dark:text-green-400">{q.answer}</span>
                       </span>
@@ -311,6 +310,9 @@ export default function AssignmentDetailPage() {
                   ["mcq", "Multiple choice"],
                   ["true_false", "True / False"],
                   ["short", "Short answer"],
+                  ["enumeration", "Enumeration"],
+                  ["fill_blank", "Fill in the blank"],
+                  ["matching", "Matching"],
                 ] as const
               ).map(([v, l]) => {
                 const on = types.includes(v);

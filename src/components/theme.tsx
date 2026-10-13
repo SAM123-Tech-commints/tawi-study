@@ -142,7 +142,7 @@ export function ThemeToggle({ className }: { className?: string }) {
   const { dark, toggle } = useTheme();
 
   const handleToggle = () => {
-    // Respect users who ask for less motion — just flip, no sweep.
+    // Respect users who ask for less motion — just flip, no animation.
     const reduce =
       typeof window !== "undefined" &&
       typeof window.matchMedia === "function" &&
@@ -152,38 +152,13 @@ export function ThemeToggle({ className }: { className?: string }) {
       return;
     }
 
-    // Light → Dark: circle expands from upper-right
-    // Dark → Light: circle expands from upper-left
-    const goingDark = !dark;
-    const originX = goingDark ? window.innerWidth : 0;
-    const originY = 0;
-    const maxDim = Math.hypot(window.innerWidth, window.innerHeight) * 1.5;
-    const bgColor = goingDark ? "#0f0f0d" : "#fafaf6";
-
-    const overlay = document.createElement("div");
-    overlay.style.cssText = `
-      position: fixed; inset: 0; z-index: 2147483646; pointer-events: none;
-      background: ${bgColor};
-      clip-path: circle(0% at ${originX}px ${originY}px);
-      transition: clip-path 0.55s cubic-bezier(0.65, 0, 0.35, 1);
-    `;
-    document.body.appendChild(overlay);
-
-    // Force reflow then animate
-    overlay.getBoundingClientRect();
-    requestAnimationFrame(() => {
-      overlay.style.clipPath = `circle(${maxDim}px at ${originX}px ${originY}px)`;
-    });
-
-    // Flip theme at the peak of the circle expansion
-    setTimeout(() => toggle(), 220);
-
-    // Clean up smoothly
-    setTimeout(() => {
-      overlay.style.transition = "opacity 0.35s ease-out";
-      overlay.style.opacity = "0";
-      setTimeout(() => overlay.remove(), 360);
-    }, 550);
+    // Background-only transition: no covering sweep. We briefly enable a color
+    // transition on every surface so the whole UI cross-fades between light and
+    // dark, then flip the theme. Content stays fully visible the entire time.
+    const root = document.documentElement;
+    root.classList.add("theme-anim");
+    toggle();
+    window.setTimeout(() => root.classList.remove("theme-anim"), 480);
   };
 
   return (

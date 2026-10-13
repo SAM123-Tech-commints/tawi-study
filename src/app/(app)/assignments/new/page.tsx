@@ -19,7 +19,7 @@ import {
   fetchUrlAction,
   generateAssignmentQuestionsAction,
 } from "@/lib/actions";
-import { extractPdfText, extractTextFile } from "@/components/pdf";
+import { extractPdfText, extractTextFile, renderPdfImagePages } from "@/components/pdf";
 import {
   Badge,
   Button,
@@ -62,7 +62,16 @@ export default function NewAssignmentPage() {
   const [dragOver, setDragOver] = useState(false);
   const [url, setUrl] = useState("");
   const [pasted, setPasted] = useState("");
+  const [visionOn, setVisionOn] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Detect whether AI vision is configured (reads diagrams/images in PDFs).
+  useEffect(() => {
+    fetch("/api/vision")
+      .then((r) => r.json())
+      .then((d) => setVisionOn(!!d?.available))
+      .catch(() => setVisionOn(false));
+  }, []);
 
   // step 3: settings
   const [count, setCount] = useState(10);
@@ -127,12 +136,72 @@ export default function NewAssignmentPage() {
     toast(`“${name}” added — ${Math.min(text.length, pages * 3200).toLocaleString()} characters`);
   };
 
+  const dataUrlToBlob = (dataUrl: string): Blob => {
+    const [head, b64] = dataUrl.split(",");
+    const mime = /data:(.*?);base64/.exec(head)?.[1] ?? "image/png";
+    const bin = atob(b64 ?? "");
+    const arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    return new Blob([arr], { type: mime });
+  };
+
+  const visionReadPages = async (
+    imgPages: { page: number; dataUrl: string }[]
+  ): Promise<string> => {
+    const results = await Promise.all(
+      imgPages.map(async (p) => {
+        try {
+          const form = new FormData();
+          form.append("file", dataUrlToBlob(p.dataUrl), `page-${p.page}.png`);
+          form.append("mode", "figures");
+          const res = await fetch("/api/vision", { method: "POST", body: form });
+          const data = await res.json();
+          return data?.ok && data.text ? `【Page ${p.page} — images & diagrams】\n${data.text}` : "";
+        } catch {
+          return "";
+        }
+      })
+    );
+    return results.filter(Boolean).join("\n\n");
+  };
+
   const handleFile = async (file: File) => {
     setExtracting(true);
     try {
+      const lower = file.name.toLowerCase();
+      const isImage = /\.(png|jpe?g|webp|bmp|tiff?)$/.test(lower);
       let text = "";
-      if (file.name.toLowerCase().endsWith(".pdf")) text = await extractPdfText(file);
-      else text = await extractTextFile(file);
+      if (lower.endsWith(".pdf")) {
+        text = await extractPdfText(file);
+        if (visionOn) {
+          try {
+            const imgPages = await renderPdfImagePages(file, { maxPages: 6 });
+            if (imgPages.length) {
+              toast(`Reading ${imgPages.length} image/diagram page${imgPages.length > 1 ? "s" : ""} with AI…`);
+              const extra = await visionReadPages(imgPages);
+              if (extra.trim()) text = `${text}\n\n${extra}`.trim();
+            }
+          } catch {
+            /* vision is an enhancement */
+          }
+        }
+      } else if (isImage) {
+        const endpoint = visionOn ? "/api/vision" : "/api/ocr";
+        const form = new FormData();
+        form.append("file", file);
+        if (visionOn) form.append("mode", "full");
+        const res = await fetch(endpoint, { method: "POST", body: form });
+        const data = await res.json();
+        if (data?.ok && (data.text?.length ?? 0) > 40) {
+          await addContent(data.text, file.name + (visionOn ? " (AI vision)" : " (OCR)"));
+          toast(visionOn ? "Image read with AI vision ✨" : "Image text extracted");
+          setExtracting(false);
+          return;
+        }
+        toast("Could not read text from this image. Try a clearer image or paste the text.", "error");
+        setExtracting(false);
+        return;
+      } else text = await extractTextFile(file);
       if (text.trim().length < 80) {
         toast("Could not read much text from this file. Try pasting instead.", "error");
         return;
@@ -200,6 +269,9 @@ export default function NewAssignmentPage() {
     ["mcq", "Multiple choice", "4 options, one correct"],
     ["true_false", "True / False", "Spot the false statement"],
     ["short", "Short answer", "Answer in 1–2 sentences"],
+    ["enumeration", "Enumeration", "List the items / steps"],
+    ["fill_blank", "Fill in the blank", "Recall the missing term"],
+    ["matching", "Matching", "Pair terms to definitions"],
   ] as const;
 
   return (
@@ -292,7 +364,7 @@ export default function NewAssignmentPage() {
               <input
                 ref={fileRef}
                 type="file"
-                accept=".pdf,.txt,.md,.csv,.json"
+                accept=".pdf,.txt,.md,.csv,.json,.png,.jpg,.jpeg,.webp"
                 className="hidden"
                 onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
               />
@@ -322,7 +394,10 @@ export default function NewAssignmentPage() {
                       <UploadCloud size={26} />
                     </span>
                     <p className="mt-3 text-[15px] font-bold text-ink dark:text-cream">Click the cloud or drop your file</p>
-                    <p className="mt-1 text-[13px] text-ink/50 dark:text-cream/50">PDF, TXT, MD, CSV · up to 80 pages</p>
+                    <p className="mt-1 text-[13px] text-ink/50 dark:text-cream/50">
+                      PDF, images, TXT, MD, CSV · up to 80 pages ·{" "}
+                      {visionOn ? "AI reads diagrams & images" : "images use OCR"}
+                    </p>
                   </>
                 )}
               </div>

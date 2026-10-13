@@ -18,6 +18,9 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
+/** Letters/numbers only, lowercased — for lenient answer comparison. */
+const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "");
+
 function WinOverlay({ label, score, onReplay, onExit }: { label: string; score: string; onReplay: () => void; onExit: () => void }) {
   return (
     <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 rounded-3xl bg-surface/95 backdrop-blur-sm animate-fade dark:bg-surface-dark/95">
@@ -177,7 +180,7 @@ function GameQuiz({ cards, onExit }: { cards: GameCard[]; onExit: () => void }) 
         <div className="flex items-center gap-3 text-sm font-semibold text-ink/60 dark:text-cream/60">
           {streak >= 2 && <span className="text-amber-500">🔥 {streak} streak</span>}
           <span>
-            {score}/{idx}
+            {score} / {questions.length}
           </span>
         </div>
       </div>
@@ -239,13 +242,17 @@ function GameTrueFalse({ cards, onExit }: { cards: GameCard[]; onExit: () => voi
     return shuffle(cards)
       .slice(0, Math.min(10, cards.length))
       .map((c) => {
-        const flip = Math.random() < 0.5;
         const others = cards.filter((x) => x.term !== c.term);
-        const other = others[Math.floor(Math.random() * others.length)];
+        // eslint-disable-next-line react-hooks/purity
+        const other = others.length ? others[Math.floor(Math.random() * others.length)] : undefined;
+        // Only flip when there is a different term to substitute, otherwise the
+        // "false" statement would actually be true.
+        // eslint-disable-next-line react-hooks/purity
+        const doFlip = Math.random() < 0.5 && !!other;
         return {
-          term: flip && other ? other.term : c.term,
+          term: doFlip && other ? other.term : c.term,
           definition: c.definition,
-          answer: !flip,
+          answer: !doFlip,
           correctTerm: c.term,
         };
       });
@@ -274,7 +281,7 @@ function GameTrueFalse({ cards, onExit }: { cards: GameCard[]; onExit: () => voi
           <ArrowLeft size={15} /> All games
         </Button>
         <p className="text-sm font-semibold text-ink/60 dark:text-cream/60">
-          {score}/{idx}
+          {score} / {questions.length}
         </p>
       </div>
       {!done && q && (
@@ -367,7 +374,7 @@ function GameTyping({ cards, onExit }: { cards: GameCard[]; onExit: () => void }
           <ArrowLeft size={15} /> All games
         </Button>
         <p className="text-sm font-semibold text-ink/60 dark:text-cream/60">
-          {score}/{idx}
+          {score} / {questions.length}
         </p>
       </div>
       {!done && q && (
@@ -421,6 +428,29 @@ function GameTyping({ cards, onExit }: { cards: GameCard[]; onExit: () => void }
 
 /* ----------------------------- Scramble ----------------------------- */
 
+/** Scramble the letters of a single word in place, leaving spaces, hyphens and
+ *  other punctuation untouched so multi-word and "O(n)"-style terms stay
+ *  solvable and the hint still lines up with the answer. */
+function scrambleWord(seg: string): string {
+  const chars = [...seg];
+  const letterPos = chars.map((c, i) => (/[a-zA-Z]/.test(c) ? i : -1)).filter((i) => i >= 0);
+  if (letterPos.length <= 2) return seg;
+  const letters = letterPos.map((i) => chars[i]);
+  let shuffled = shuffle(letters);
+  if (shuffled.join("") === letters.join("")) shuffled = [...letters].reverse();
+  letterPos.forEach((pos, k) => {
+    chars[pos] = shuffled[k];
+  });
+  return chars.join("");
+}
+
+function scrambleTerm(term: string): string {
+  return term
+    .split(/(\s+)/)
+    .map((part) => (/\S/.test(part) ? scrambleWord(part) : part))
+    .join("");
+}
+
 function GameScramble({ cards, onExit }: { cards: GameCard[]; onExit: () => void }) {
   const [round, setRound] = useState(0);
   const words = useMemo(() => shuffle(cards).slice(0, Math.min(8, cards.length)), [round]);
@@ -430,15 +460,10 @@ function GameScramble({ cards, onExit }: { cards: GameCard[]; onExit: () => void
   const [score, setScore] = useState(0);
   const done = idx >= words.length;
   const q = words[idx];
-  const scrambled = useMemo(() => {
-    if (!q) return "";
-    const letters = q.term.replace(/[^a-zA-Z]/g, "").split("");
-    const sh = shuffle(letters);
-    return sh.join("") === q.term ? letters.reverse().join("") : sh.join("");
-  }, [q]);
+  const scrambled = useMemo(() => (q ? scrambleTerm(q.term) : ""), [q]);
 
   const check = () => {
-    const ok = value.trim().toLowerCase() === q.term.toLowerCase();
+    const ok = slug(value) === slug(q.term) || (slug(value).length > 3 && slug(q.term).includes(slug(value)));
     if (ok) setScore((s) => s + 1);
     setGaveUp(true);
     setTimeout(() => {
@@ -455,7 +480,7 @@ function GameScramble({ cards, onExit }: { cards: GameCard[]; onExit: () => void
           <ArrowLeft size={15} /> All games
         </Button>
         <p className="text-sm font-semibold text-ink/60 dark:text-cream/60">
-          {score}/{idx}
+          {score} / {words.length}
         </p>
       </div>
       {!done && q && (
@@ -478,7 +503,7 @@ function GameScramble({ cards, onExit }: { cards: GameCard[]; onExit: () => void
             className={cn(
               "h-12 w-full rounded-2xl border-2 px-4 text-center text-[15px] font-bold outline-none transition",
               gaveUp
-                ? value.trim().toLowerCase() === q.term.toLowerCase()
+                ? slug(value).length > 3 && slug(q.term).includes(slug(value))
                   ? "border-green-500 bg-green-100 text-green-800 dark:bg-green-500/20 dark:text-green-300"
                   : "border-red-400 bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300"
                 : "border-ink/15 bg-surface text-ink focus:border-brand-500 dark:border-cream/15 dark:bg-surface-dark dark:text-cream"
